@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
@@ -28,28 +29,25 @@ fn count_files(dir: &str, exts: &[&str]) -> usize {
     if !path.exists() {
         return 0;
     }
-    fs::read_dir(path)
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().is_file())
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|ext| ext.to_str())
-                        .map(|ext| exts.contains(&ext.to_lowercase().as_str()))
-                        .unwrap_or(false)
-                })
-                .count()
-        })
-        .unwrap_or(0)
+    fs::read_dir(path).map_or(0, |entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter(|e| e.path().is_file())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .is_some_and(|ext| exts.iter().any(|valid| ext.eq_ignore_ascii_case(valid)))
+            })
+            .count()
+    })
 }
 
 #[tauri::command]
 pub fn get_media_counts() -> MediaCount {
     let base = userprofile();
-    let screenshots = count_files(&format!("{}\\Pictures\\LaunchScreen", base), IMG_EXTS);
-    let videos = count_files(&format!("{}\\Videos\\LaunchVideo", base), VID_EXTS);
+    let screenshots = count_files(&format!("{base}\\Pictures\\LaunchScreen"), IMG_EXTS);
+    let videos = count_files(&format!("{base}\\Videos\\LaunchVideo"), VID_EXTS);
     MediaCount {
         screenshots,
         videos,
@@ -57,8 +55,8 @@ pub fn get_media_counts() -> MediaCount {
 }
 
 #[tauri::command]
-pub fn get_media_files(dir_type: String) -> Result<Vec<MediaFileEntry>, String> {
-    let (dir, exts, is_image) = match dir_type.as_str() {
+pub fn get_media_files(dir_type: &str) -> Result<Vec<MediaFileEntry>, String> {
+    let (dir, exts, is_image) = match dir_type {
         "screenshots" => (
             format!("{}\\Pictures\\LaunchScreen", userprofile()),
             IMG_EXTS,
@@ -87,8 +85,8 @@ pub fn get_media_files(dir_type: String) -> Result<Vec<MediaFileEntry>, String> 
             }
             let ext = fpath
                 .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_lowercase())
+                .and_then(std::ffi::OsStr::to_str)
+                .map(str::to_lowercase)
                 .unwrap_or_default();
             if !exts.contains(&ext.as_str()) {
                 return None;
@@ -98,14 +96,16 @@ pub fn get_media_files(dir_type: String) -> Result<Vec<MediaFileEntry>, String> 
             let thumbnail = if is_image {
                 fs::read(&fpath).ok().map(|data| {
                     let mime = match ext.as_str() {
-                        "png" => "image/png",
                         "jpg" | "jpeg" => "image/jpeg",
                         "gif" => "image/gif",
                         "webp" => "image/webp",
                         "bmp" => "image/bmp",
                         _ => "image/png",
                     };
-                    format!("data:{};base64,{}", mime, base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data))
+                    format!(
+                        "data:{mime};base64,{}",
+                        base64::engine::general_purpose::STANDARD.encode(&data)
+                    )
                 })
             } else {
                 None
@@ -124,6 +124,6 @@ pub fn get_media_files(dir_type: String) -> Result<Vec<MediaFileEntry>, String> 
 }
 
 #[tauri::command]
-pub fn delete_media_file(path: String) -> Result<(), String> {
-    fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))
+pub fn delete_media_file(path: &str) -> Result<(), String> {
+    fs::remove_file(path).map_err(|e| format!("Failed to delete file: {e}"))
 }
