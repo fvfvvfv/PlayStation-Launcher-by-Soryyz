@@ -11,6 +11,9 @@ pub struct AppConfig {
     pub bg_video: String,
     pub bg_video_enabled: bool,
     pub bg_dimmed: f64,
+    pub accent_color: String,
+    pub start_screen: String,
+    pub show_game_covers: bool,
 }
 
 impl Default for AppConfig {
@@ -23,6 +26,9 @@ impl Default for AppConfig {
             bg_video: "S1.mp4".to_string(),
             bg_video_enabled: true,
             bg_dimmed: 0.8,
+            accent_color: "#2d7aff".to_string(),
+            start_screen: "home".to_string(),
+            show_game_covers: true,
         }
     }
 }

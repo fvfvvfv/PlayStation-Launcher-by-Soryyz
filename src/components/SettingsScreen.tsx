@@ -2,6 +2,17 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
+const BG_GRADIENTS = [
+  "linear-gradient(135deg, #0f2027, #203a43, #2c5364)",
+  "linear-gradient(135deg, #1a1a2e, #16213e, #0f3460)",
+  "linear-gradient(135deg, #2b0f1c, #3b1f2c, #4a2f3c)",
+  "linear-gradient(135deg, #0d0d0d, #1a1a2e, #16213e)",
+  "linear-gradient(135deg, #1c0a2e, #2a1a3e, #382a4e)",
+  "linear-gradient(135deg, #0a1f0f, #1a2f1f, #2a3f2f)",
+  "linear-gradient(135deg, #2e1f0a, #3e2f1a, #4e3f2a)",
+  "linear-gradient(135deg, #1f0f2e, #2f1f3e, #3f2f4e)",
+];
+
 const BG_OPTIONS = [
   { label: "1", value: "S1.mp4" },
   { label: "2", value: "S2.mp4" },
@@ -13,6 +24,12 @@ const BG_OPTIONS = [
   { label: "8", value: "S8.mp4" },
 ];
 
+const START_OPTIONS = [
+  { label: "Домой", value: "home" },
+  { label: "Библиотека", value: "games" },
+  { label: "Настройки", value: "settings" },
+];
+
 interface AppConfig {
   game_paths: string[];
   auto_launch: boolean;
@@ -20,6 +37,9 @@ interface AppConfig {
   bg_video: string;
   bg_video_enabled: boolean;
   bg_dimmed: number;
+  accent_color: string;
+  start_screen: string;
+  show_game_covers: boolean;
 }
 
 interface Props {
@@ -39,6 +59,9 @@ export function SettingsScreen({ onRefreshGames }: Props) {
         bg_video: cfg.bg_video || "S1.mp4",
         bg_video_enabled: cfg.bg_video_enabled ?? true,
         bg_dimmed: cfg.bg_dimmed ?? 0.8,
+        accent_color: cfg.accent_color || "#2d7aff",
+        start_screen: cfg.start_screen || "home",
+        show_game_covers: cfg.show_game_covers ?? true,
       });
     }).catch(console.error);
   }, []);
@@ -46,8 +69,9 @@ export function SettingsScreen({ onRefreshGames }: Props) {
   const save = useCallback((updated: AppConfig) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
-      invoke("set_config", { config: updated }).catch(console.error);
-      onRefreshGames();
+      invoke("set_config", { config: updated })
+        .then(() => onRefreshGames())
+        .catch(console.error);
     }, 200);
   }, [onRefreshGames]);
 
@@ -86,6 +110,28 @@ export function SettingsScreen({ onRefreshGames }: Props) {
             onChange={(e) => update({ auto_launch: e.target.checked })}
           />
         </label>
+
+        <label className="settings-row">
+          <span>Начальный экран</span>
+          <select
+            className="settings-select"
+            value={config.start_screen}
+            onChange={(e) => update({ start_screen: e.target.value })}
+          >
+            {START_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="settings-row">
+          <span>Показывать обложки игр</span>
+          <input
+            type="checkbox"
+            checked={config.show_game_covers}
+            onChange={(e) => update({ show_game_covers: e.target.checked })}
+          />
+        </label>
       </section>
 
       <section className="settings-section">
@@ -103,15 +149,14 @@ export function SettingsScreen({ onRefreshGames }: Props) {
         {config.bg_video_enabled && (
           <>
             <div className="bg-selector">
-              {BG_OPTIONS.map((o) => (
+              {BG_OPTIONS.map((o, i) => (
                 <button
                   key={o.value}
                   className={`bg-card ${config.bg_video === o.value ? "active" : ""}`}
                   onClick={() => update({ bg_video: o.value })}
                 >
-                  <div className="bg-card-preview">
+                  <div className="bg-card-preview" style={{ background: BG_GRADIENTS[i % BG_GRADIENTS.length] }}>
                     <span className="bg-card-num">{o.label}</span>
-                    {config.bg_video === o.value && <span className="bg-card-check">▶</span>}
                   </div>
                 </button>
               ))}
@@ -132,6 +177,16 @@ export function SettingsScreen({ onRefreshGames }: Props) {
             </div>
           </>
         )}
+
+        <div className="settings-row">
+          <span>Цвет акцента</span>
+          <input
+            type="color"
+            className="settings-color"
+            value={config.accent_color}
+            onChange={(e) => update({ accent_color: e.target.value })}
+          />
+        </div>
       </section>
 
       <section className="settings-section">

@@ -38,6 +38,14 @@ function getSections(gamesCount: number): Section[] {
   return sections;
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const c = hex.replace("#", "");
+  const r = parseInt(c.substring(0, 2), 16) || 45;
+  const g = parseInt(c.substring(2, 4), 16) || 122;
+  const b = parseInt(c.substring(4, 6), 16) || 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function App() {
   const [showIntro, setShowIntro] = useState(true);
   const [screen, setScreen] = useState<Screen>("home");
@@ -51,14 +59,21 @@ function App() {
   const [bgVideo, setBgVideo] = useState("S1.mp4");
   const [bgVideoEnabled, setBgVideoEnabled] = useState(true);
   const [bgDimmed, setBgDimmed] = useState(0.8);
+  const [accentColor, setAccentColor] = useState("#2d7aff");
+  const [startScreen, setStartScreen] = useState("home");
   const { games, loading, launch, refresh } = useGames();
 
   const loadConfig = useCallback(() => {
-    invoke<{ hints_visible: boolean; bg_video: string; bg_video_enabled: boolean; bg_dimmed: number }>("get_config").then((cfg) => {
+    invoke<{
+      hints_visible: boolean; bg_video: string; bg_video_enabled: boolean; bg_dimmed: number;
+      accent_color: string; start_screen: string;
+    }>("get_config").then((cfg) => {
       if (cfg.hints_visible !== undefined) setHintsVisible(cfg.hints_visible);
       if (cfg.bg_video) setBgVideo(cfg.bg_video);
       if (cfg.bg_video_enabled !== undefined) setBgVideoEnabled(cfg.bg_video_enabled);
       if (cfg.bg_dimmed !== undefined) setBgDimmed(cfg.bg_dimmed);
+      if (cfg.accent_color) setAccentColor(cfg.accent_color);
+      if (cfg.start_screen) setStartScreen(cfg.start_screen);
     }).catch(() => {});
   }, []);
 
@@ -68,6 +83,13 @@ function App() {
   }, [refresh, loadConfig]);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
+  useEffect(() => { if (screen === "home" && startScreen !== "home") setScreen(startScreen as Screen); }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--accent", accentColor);
+    document.documentElement.style.setProperty("--accent-glow", hexToRgba(accentColor, 0.3));
+  }, [accentColor]);
+
   const screenRef = useRef(screen);
   screenRef.current = screen;
   const focusSecRef = useRef(focusSec);
@@ -283,7 +305,7 @@ function App() {
               </div>
               <div className="top-bar-right">
                 <div className="controller-badge" style={{
-                  width: 22, height: 22, opacity: 0.5,
+                  width: 22, height: 22,
                   transition: "opacity 0.3s ease",
                   opacity: inputMode === "gamepad" && controllerType !== "none" ? 0.5 : 0,
                   pointerEvents: "none",

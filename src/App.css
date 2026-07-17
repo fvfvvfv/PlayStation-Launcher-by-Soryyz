@@ -907,15 +907,24 @@ html, body, #root {
   color: var(--text-primary);
 }
 
-.bg-card-check {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  font-size: 28px;
-  opacity: 0.8;
+.settings-color {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  background: none;
+  overflow: hidden;
+}
+
+.settings-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.settings-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
 }
 
 .settings-add-btn {
