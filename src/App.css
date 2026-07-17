@@ -17,7 +17,7 @@
   --border: rgba(255, 255, 255, 0.06);
   --radius: 12px;
   --radius-lg: 20px;
-  --font: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 html, body, #root {
@@ -734,25 +734,42 @@ html, body, #root {
 /* Settings */
 .settings-screen {
   padding: 8px 0 32px;
-  max-width: 640px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
 }
 
 .settings-title {
   font-size: 28px;
   font-weight: 700;
-  margin-bottom: 28px;
   letter-spacing: -0.02em;
 }
 
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
 .settings-section {
-  margin-bottom: 32px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
 }
 
 .settings-section-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .settings-hint {
@@ -784,7 +801,7 @@ html, body, #root {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: var(--bg-card);
+  background: var(--bg-secondary);
   border-radius: 8px;
   margin-bottom: 8px;
 }
@@ -941,25 +958,11 @@ html, body, #root {
   font-family: var(--font);
 }
 
-.settings-add-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.settings-about {
-  background: var(--bg-card);
-  padding: 20px;
-  border-radius: 12px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
 .settings-save-btn {
   background: var(--accent);
   color: white;
   border: none;
-  padding: 12px 32px;
+  padding: 10px 28px;
   border-radius: 50px;
   font-size: 14px;
   font-weight: 600;
@@ -969,8 +972,13 @@ html, body, #root {
 }
 
 .settings-save-btn:hover {
-  background: #4a8aff;
+  background: color-mix(in srgb, var(--accent) 80%, white);
   box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.settings-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Media */

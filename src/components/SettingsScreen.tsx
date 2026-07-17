@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -48,7 +48,7 @@ interface Props {
 
 export function SettingsScreen({ onRefreshGames }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const timerRef = useRef<number | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     invoke<AppConfig>("get_config").then((cfg) => {
@@ -66,30 +66,31 @@ export function SettingsScreen({ onRefreshGames }: Props) {
     }).catch(console.error);
   }, []);
 
-  const save = useCallback((updated: AppConfig) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      invoke("set_config", { config: updated })
-        .then(() => onRefreshGames())
-        .catch(console.error);
-    }, 200);
+  const doSave = useCallback((updated: AppConfig) => {
+    invoke("set_config", { config: updated })
+      .then(() => { setSaved(true); setTimeout(() => setSaved(false), 2000); onRefreshGames(); })
+      .catch(console.error);
   }, [onRefreshGames]);
 
   const update = useCallback((patch: Partial<AppConfig>) => {
     setConfig((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, ...patch };
-      save(next);
-      return next;
+      return { ...prev, ...patch };
     });
-  }, [save]);
+  }, []);
 
   if (!config) return null;
 
   return (
     <div className="settings-screen">
-      <h2 className="settings-title">Настройки</h2>
+      <div className="settings-header">
+        <h2 className="settings-title">Настройки</h2>
+        <button className="settings-save-btn" onClick={() => doSave(config)}>
+          {saved ? "✓ Сохранено" : "Сохранить"}
+        </button>
+      </div>
 
+      <div className="settings-grid">
       <section className="settings-section">
         <h3 className="settings-section-title">Общие</h3>
 
@@ -225,6 +226,7 @@ export function SettingsScreen({ onRefreshGames }: Props) {
           + Добавить папку
         </button>
       </section>
+      </div>
     </div>
   );
 }
