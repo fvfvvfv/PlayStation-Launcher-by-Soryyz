@@ -27,7 +27,6 @@ function getSections(gamesCount: number): Section[] {
   return [
     { id: "hero", cols: 2 },
     { id: "games", cols: Math.min(gamesCount, 6) },
-    { id: "quick", cols: 4 },
   ];
 }
 
@@ -96,10 +95,6 @@ function App() {
               if (focusItem === 1) setScreen("games");
             } else if (sec.id === "games" && focusItem < games.length) {
               launch(games[focusItem].path);
-            } else if (sec.id === "quick") {
-              const actions: (Screen | null)[] = ["games", "media", null, "settings"];
-              const a = actions[focusItem];
-              if (a) setScreen(a);
             }
             return;
           }
@@ -292,28 +287,6 @@ function App() {
                 )}
               </section>
 
-              <section className="quick-actions-section">
-                <div className="section-header">
-                  <h2 className="section-title">Быстрый доступ</h2>
-                </div>
-                <div className="quick-grid">
-                  {[
-                    { label: "Библиотека", icon: "🎮", action: "games" as const },
-                    { label: "Медиа", icon: "🎬", action: "media" as const },
-                    { label: "Скриншоты", icon: "📸" },
-                    { label: "Настройки", icon: "⚙️", action: "settings" as const },
-                  ].map((item, i) => (
-                    <button
-                      key={item.label}
-                      className={`quick-card ${showFocus && focusSec === 2 && focusItem === i ? "focused" : ""}`}
-                      onClick={() => item.action && setScreen(item.action)}
-                    >
-                      <span className="quick-card-icon">{item.icon}</span>
-                      <span className="quick-card-label">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
             </>
           )}
 

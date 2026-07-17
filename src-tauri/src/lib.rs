@@ -52,6 +52,17 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            // Create media folders on startup
+            let pics = std::env::var("USERPROFILE")
+                .map(|p| format!("{}\\Pictures\\LaunchScreen", p));
+            let vids = std::env::var("USERPROFILE")
+                .map(|p| format!("{}\\Videos\\LaunchVideo", p));
+            if let Ok(dir) = pics {
+                let _ = std::fs::create_dir_all(&dir);
+            }
+            if let Ok(dir) = vids {
+                let _ = std::fs::create_dir_all(&dir);
+            }
             create_tray(app)?;
             Ok(())
         })

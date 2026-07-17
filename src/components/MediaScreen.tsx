@@ -41,7 +41,7 @@ export function MediaScreen({ games, onOpenLibrary }: Props) {
         <div className="media-captures-grid">
           <div
             className="media-capture-card"
-            onClick={() => openFolder("%USERPROFILE%\\Pictures\\Screenshots")}
+            onClick={() => openFolder("%USERPROFILE%\\Pictures\\LaunchScreen")}
           >
             <span className="media-capture-icon">📸</span>
             <span className="media-capture-label">Скриншоты</span>
@@ -49,18 +49,10 @@ export function MediaScreen({ games, onOpenLibrary }: Props) {
           </div>
           <div
             className="media-capture-card"
-            onClick={() => openFolder("%USERPROFILE%\\Videos\\Captures")}
+            onClick={() => openFolder("%USERPROFILE%\\Videos\\LaunchVideo")}
           >
             <span className="media-capture-icon">🎥</span>
             <span className="media-capture-label">Видео</span>
-            <span className="media-capture-hint">Открыть папку</span>
-          </div>
-          <div
-            className="media-capture-card"
-            onClick={() => openFolder("%USERPROFILE%\\Documents")}
-          >
-            <span className="media-capture-icon">🏆</span>
-            <span className="media-capture-label">Трофеи</span>
             <span className="media-capture-hint">Открыть папку</span>
           </div>
         </div>

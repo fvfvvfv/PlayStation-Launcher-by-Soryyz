@@ -362,49 +362,6 @@ html, body, #root {
 }
 
 /* Quick Actions */
-.quick-actions-section {
-  margin-bottom: 32px;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-.quick-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px;
-  background: var(--bg-card);
-  border: 2px solid transparent;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
-  font-family: var(--font);
-  color: var(--text-primary);
-}
-
-.quick-card:hover,
-.quick-card.focused {
-  background: var(--bg-card-hover);
-  border-color: var(--accent);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px var(--accent-glow);
-}
-
-.quick-card-icon {
-  font-size: 32px;
-}
-
-.quick-card-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
 /* Bottom Bar */
 .bottom-bar {
   position: relative;
