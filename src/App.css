@@ -392,7 +392,7 @@ html, body, #root {
 .bottom-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -1355,3 +1355,32 @@ html, body, #root {
   min-width: 16px;
   text-align: center;
 }
+
+.hint-icon-wrap, .hint-icon-wrap svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.hint-icon-img {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
+  filter: brightness(1.2);
+}
+
+.hint-icon-char {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+

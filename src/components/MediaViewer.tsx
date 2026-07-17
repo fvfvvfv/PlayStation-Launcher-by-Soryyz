@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 
 interface MediaFile {
@@ -11,6 +12,7 @@ interface MediaFile {
 interface Props {
   initialTab: "screenshots" | "videos";
   onBack: () => void;
+  onTabChange: (tab: "screenshots" | "videos") => void;
   controller: string;
   icons: {
     ConfirmIcon: () => JSX.Element;
@@ -21,91 +23,112 @@ interface Props {
   onToggleHints: () => void;
 }
 
-const TABS = ["screenshots", "videos"] as const;
+const TABS: ("screenshots" | "videos")[] = ["screenshots", "videos"];
+
+const _cache: Record<string, MediaFile[]> = {};
+let _cacheKey = "";
 
 function VideoThumbnail({ path }: { path: string }) {
+  const [state, setState] = useState<"loading" | "ok" | "err">("loading");
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
+    let done = false;
     const video = document.createElement("video");
-    video.preload = "metadata";
+    video.preload = "auto";
     video.muted = true;
     video.crossOrigin = "anonymous";
-    try { video.src = convertFileSrc(path); } catch { return; }
 
-    let done = false;
+    try {
+      const src = convertFileSrc(path);
+      if (!src) { setState("err"); return; }
+      video.src = src;
+    } catch { setState("err"); return; }
+
+    const timeout = setTimeout(() => { if (!done) { done = true; setState("err"); video.remove(); } }, 4000);
     const capture = () => {
       if (done || !mountedRef.current) return;
-      done = true;
+      done = true; clearTimeout(timeout);
       try {
+        if (!video.videoWidth || !video.videoHeight) { setState("err"); video.remove(); return; }
         const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth || 320;
-        canvas.height = video.videoHeight || 180;
-        canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        setDataUrl(canvas.toDataURL("image/jpeg", 0.4));
-      } catch {}
+        canvas.width = Math.min(video.videoWidth, 320);
+        canvas.height = Math.min(video.videoHeight, 180);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { setState("err"); video.remove(); return; }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const url = canvas.toDataURL("image/jpeg", 0.4);
+        if (mountedRef.current) { setDataUrl(url); setState("ok"); }
+      } catch { setState("err"); }
       video.remove();
     };
 
-    video.onloadeddata = () => { video.currentTime = 0.5; };
+    video.onloadedmetadata = () => {
+      if (!done) video.currentTime = Math.min(0.5, video.duration || 1);
+    };
     video.onseeked = capture;
-    video.onerror = capture;
-    setTimeout(() => { if (!done) capture(); }, 2000);
+    video.onerror = () => { if (!done) { done = true; clearTimeout(timeout); setState("err"); video.remove(); } };
 
-    return () => { mountedRef.current = false; video.remove(); };
+    return () => { mountedRef.current = false; clearTimeout(timeout); if (!done) { video.remove(); done = true; } };
   }, [path]);
 
-  if (dataUrl) return <img className="media-viewer-thumb" src={dataUrl} alt="" />;
+  if (state === "ok" && dataUrl) return <img className="media-viewer-thumb" src={dataUrl} alt="" />;
   return <div className="media-viewer-video-thumb"><span>🎥</span></div>;
 }
 
-export function MediaViewer({ initialTab, onBack, controller, icons, showHints, onToggleHints }: Props) {
+export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons, showHints, onToggleHints }: Props) {
   const [tabIdx, setTabIdx] = useState(initialTab === "videos" ? 1 : 0);
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [preview, setPreview] = useState<MediaFile | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const mountedRef = useRef(true);
-  const cacheRef = useRef<Record<string, MediaFile[]>>({});
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const prevRef = useRef(new Map<string, number>());
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  useEffect(() => { setTabIdx(initialTab === "videos" ? 1 : 0); }, [initialTab]);
+
+  useEffect(() => {
+    setTabIdx(initialTab === "videos" ? 1 : 0);
+    setSelected(null);
+    setPreview(null);
+    setConfirmDelete(null);
+  }, [initialTab]);
 
   const load = useCallback((idx: number) => {
     const key = TABS[idx];
-    if (cacheRef.current[key]) { setFiles(cacheRef.current[key]); return; }
+    if (key in _cache) { setFiles(_cache[key]); return; }
     invoke<MediaFile[]>("get_media_files", { dirType: key })
       .then((res) => {
         if (!mountedRef.current) return;
-        cacheRef.current[key] = res;
+        _cache[key] = res;
         setFiles(res);
-        if (selected === null && res.length > 0) setSelected(0);
       })
       .catch(() => {});
-  }, [selected]);
+  }, []);
 
   useEffect(() => { load(tabIdx); }, [tabIdx, load]);
 
   useEffect(() => {
-    if (files.length > 0 && selected === null) setSelected(0);
-  }, [files, selected]);
+    if (files.length > 0 && (selected === null || selected >= files.length)) setSelected(0);
+  }, [files]);
 
   const switchTab = useCallback((idx: number) => {
-    if (idx === tabIdx) return;
+    if (idx < 0 || idx >= TABS.length || idx === tabIdx) return;
     setTabIdx(idx);
+    setSelected(null);
     setPreview(null);
     setConfirmDelete(null);
-  }, [tabIdx]);
+    onTabChange(TABS[idx]);
+  }, [tabIdx, onTabChange]);
 
   const del = useCallback(async (path: string) => {
     try {
       await invoke("delete_media_file", { path });
       const key = TABS[tabIdx];
-      cacheRef.current[key] = (cacheRef.current[key] || []).filter((f) => f.path !== path);
-      setFiles(cacheRef.current[key]);
+      _cache[key] = (_cache[key] || []).filter((f) => f.path !== path);
+      setFiles(_cache[key]);
       setConfirmDelete(null);
     } catch {}
   }, [tabIdx]);
@@ -118,7 +141,7 @@ export function MediaViewer({ initialTab, onBack, controller, icons, showHints, 
         return;
       }
       if (preview) {
-        if (e.key === "Escape" || e.key === "Backspace") { setPreview(null); }
+        if (e.key === "Escape" || e.key === "Backspace" || e.key === "Enter") { setPreview(null); }
         return;
       }
       if (e.key === "Escape" || e.key === "Backspace") { onBack(); }
@@ -128,79 +151,92 @@ export function MediaViewer({ initialTab, onBack, controller, icons, showHints, 
     return () => window.removeEventListener("keydown", handleKey);
   }, [onBack, preview, selected, files, confirmDelete, del]);
 
-  const handleGamepadAction = useCallback(
+  const handleAction = useCallback(
     (action: string) => {
       if (!mountedRef.current) return;
       if (confirmDelete) {
         if (action === "back") setConfirmDelete(null);
-        else if (action === "delete") setConfirmDelete(null);
         else if (action === "confirm") del(confirmDelete);
         return;
       }
       if (preview) {
-        if (action === "back") setPreview(null);
+        if (action === "back" || action === "confirm") { setPreview(null); }
         else if (action === "delete") setConfirmDelete(preview.path);
-        else if (action === "confirm") setPreview(null);
         return;
       }
       switch (action) {
         case "back": onBack(); break;
-        case "left": setSelected((i) => (i === null || i <= 0 ? 0 : i - 1)); break;
-        case "right": setSelected((i) => i === null ? 0 : Math.min(i + 1, files.length - 1)); break;
-        case "up": setSelected((i) => (i === null || i < 4) ? 0 : i - 4); break;
-        case "down": setSelected((i) => i === null ? 0 : Math.min(i + 4, files.length - 1)); break;
-        case "confirm": if (selected !== null && files[selected]) setPreview(files[selected]); break;
-        case "delete": if (selected !== null && files[selected]) setConfirmDelete(files[selected].path); break;
-        case "lb": switchTab(tabIdx === 0 ? 0 : tabIdx - 1); break;
-        case "rb": switchTab(tabIdx === TABS.length - 1 ? tabIdx : tabIdx + 1); break;
-        case "toggle_hints": onToggleHints(); break;
+        case "left":
+          setSelected((i) => (i === null || i <= 0 ? 0 : i - 1));
+          break;
+        case "right":
+          setSelected((i) => (i === null ? 0 : Math.min(i + 1, files.length - 1)));
+          break;
+        case "up": {
+          const cols = Math.max(1, Math.min(4, Math.floor(window.innerWidth / 200)));
+          setSelected((i) => (i === null || i < cols ? 0 : i - cols));
+          break;
+        }
+        case "down": {
+          const cols = Math.max(1, Math.min(4, Math.floor(window.innerWidth / 200)));
+          setSelected((i) => (i === null ? 0 : Math.min(i + cols, files.length - 1)));
+          break;
+        }
+        case "confirm":
+          if (selected !== null && files[selected]) setPreview(files[selected]);
+          break;
+        case "delete":
+          if (selected !== null && files[selected]) setConfirmDelete(files[selected].path);
+          break;
+        case "lb":
+          switchTab(Math.max(0, tabIdx - 1));
+          break;
+        case "rb":
+          switchTab(Math.min(TABS.length - 1, tabIdx + 1));
+          break;
+        case "toggle_hints":
+          onToggleHints();
+          break;
       }
     },
     [onBack, files, selected, preview, tabIdx, switchTab, confirmDelete, del, onToggleHints]
   );
 
   useEffect(() => {
-    const poll = setInterval(() => {
-      const gp = navigator.getGamepads();
-      const gamepad = Array.from(gp).find((g) => g !== null);
+    const interval = setInterval(() => {
+      const gamepad = Array.from(navigator.getGamepads()).find((g) => g !== null);
       if (!gamepad) return;
-      for (const cb of callbacks.current) cb(gamepad);
-    }, 80);
-    const callbacks: { current: ((gp: Gamepad) => void)[] } = { current: [] };
-    const prev = new Map<string, number>();
-    const check = (gp: Gamepad) => {
-      const btnMap: [string, number][] = [
-        ["confirm", 0], ["back", 1], ["delete", 2], ["toggle_hints", 3], ["lb", 4], ["rb", 5],
+      const prev = prevRef.current;
+      const actions: [string, number][] = [
+        ["confirm", 0], ["back", 1], ["delete", 2], ["toggle_hints", 3],
+        ["lb", 4], ["rb", 5],
       ];
-      for (const [action, idx] of btnMap) {
-        const pressed = gp.buttons[idx]?.pressed ?? false;
-        const k = `${action}-${gp.index}`;
+      for (const [action, idx] of actions) {
+        const pressed = gamepad.buttons[idx]?.pressed ?? false;
+        const k = `${action}-${gamepad.index}`;
         const p = prev.get(k) ?? 0;
-        if (pressed && p === 0) { handleGamepadAction(action); prev.set(k, 1); }
+        if (pressed && p === 0) { handleAction(action); prev.set(k, 1); }
         else if (!pressed) { prev.set(k, 0); }
       }
-      const ax = gp.axes;
-      const dpad: [number, number, string][] = [
-        [0, -0.5, "left"], [0, 0.5, "right"], [1, -0.5, "up"], [1, 0.5, "down"],
-      ];
-      for (const [axis, threshold, action] of dpad) {
-        const val = ax[axis] ?? 0;
-        if (Math.abs(val) > Math.abs(threshold)) {
-          const dir = val < 0 ? "neg" : "pos";
-          const dk = `${axis}-${dir}`;
-          const p = prev.get(dk) ?? 0;
-          if (p === 0) { handleGamepadAction(action); prev.set(dk, 1); }
-        } else {
-          [0, 1].forEach((a) => { prev.delete(`${a}-neg`); prev.delete(`${a}-pos`); });
-        }
-      }
-    };
-    callbacks.current.push(check);
-    return () => clearInterval(poll);
-  }, [handleGamepadAction]);
+    }, 80);
+    return () => clearInterval(interval);
+  }, [handleAction]);
 
   return (
-    <div className="media-viewer" style={{ position: "relative" }}>
+    <div className="media-viewer">
+      {preview && createPortal(
+        <div className="preview-overlay" onClick={() => setPreview(null)}>
+          <div className="preview-frame" onClick={(e) => e.stopPropagation()}>
+            {preview.is_image && preview.thumbnail ? (
+              <img className="preview-image" src={preview.thumbnail} alt={preview.name} />
+            ) : (
+              <video className="preview-video" src={(() => { try { return convertFileSrc(preview.path); } catch { return ""; } })()} controls autoPlay />
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {files.length === 0 ? (
         <div className="media-viewer-empty">
           <p>Нет файлов</p>
@@ -211,9 +247,9 @@ export function MediaViewer({ initialTab, onBack, controller, icons, showHints, 
           {files.map((file, i) => (
             <div
               key={file.path}
-              className={`media-viewer-item ${selected === i ? "selected" : ""}`}
+              className={`media-viewer-item ${selected === i ? "selected focused" : ""}`}
               onClick={() => { setSelected(i); }}
-              onDoubleClick={() => setPreview(file)}
+              onDoubleClick={() => { if (file) setPreview(file); }}
             >
               {file.is_image && file.thumbnail ? (
                 <img className="media-viewer-thumb" src={file.thumbnail} alt={file.name} />
@@ -229,27 +265,7 @@ export function MediaViewer({ initialTab, onBack, controller, icons, showHints, 
         </div>
       )}
 
-      {/* Preview overlay */}
-      {preview && (
-        <div className="preview-overlay" onClick={() => setPreview(null)}>
-          <div className="preview-frame" onClick={(e) => e.stopPropagation()}>
-            {preview.is_image && preview.thumbnail ? (
-              <img className="preview-image" src={preview.thumbnail} alt={preview.name} />
-            ) : (
-              <video
-                ref={videoRef}
-                className="preview-video"
-                src={convertFileSrc(preview.path)}
-                controls
-                autoPlay
-              />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Confirm dialog overlay */}
-      {confirmDelete && (
+      {confirmDelete && createPortal(
         <div className="confirm-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="confirm-title">Вы уверены?</div>
@@ -258,30 +274,29 @@ export function MediaViewer({ initialTab, onBack, controller, icons, showHints, 
               <button className="confirm-btn confirm-yes" onClick={() => del(confirmDelete)}>Да</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <footer className={`bottom-bar ${showHints ? "visible" : ""}`}>
-        <div className="bottom-bar-inner" style={{ justifyContent: "center", gap: 40 }}>
-          <div className="bottom-hint"><icons.ConfirmIcon /> <span>Открыть</span></div>
-          <div className="bottom-hint"><icons.BackIcon /> <span>Назад</span></div>
+        <div className="bottom-bar-inner" style={{ justifyContent: "center", gap: 32 }}>
+          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.ConfirmIcon /></span>Открыть</div>
+          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.BackIcon /></span>Назад</div>
           <div className="bottom-hint">
             {controller === "xbox"
-              ? <img src="/icons/XBOX_iconpack/button_xbox_digital_x_1.svg" style={{ width: 20, height: 20, opacity: 0.5, display: "block" }} draggable={false} />
-              : <span style={{ fontSize: 14, fontWeight: 700, opacity: 0.5 }}>□</span>}
-            <span>Удалить</span>
+              ? <img src="/icons/XBOX_iconpack/button_xbox_digital_x_1.svg" className="hint-icon-img" draggable={false} />
+              : <span className="hint-icon-char">□</span>}
+            Удалить
           </div>
           <div className="bottom-hint">
             {controller === "xbox"
-              ? <img src="/icons/XBOX_iconpack/button_xbox_digital_y_1.svg" style={{ width: 20, height: 20, opacity: 0.5, display: "block" }} draggable={false} />
-              : <span style={{ fontSize: 14, fontWeight: 700, opacity: 0.5 }}>△</span>}
-            <span>Скрыть</span>
+              ? <img src="/icons/XBOX_iconpack/button_xbox_digital_y_1.svg" className="hint-icon-img" draggable={false} />
+              : <span className="hint-icon-char">△</span>}
+            Скрыть
           </div>
-          <div className="bottom-hint"><icons.DpadNav /> <span>Навигация</span></div>
+          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.DpadNav /></span>Навигация</div>
         </div>
       </footer>
     </div>
   );
 }
-
-

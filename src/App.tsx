@@ -372,6 +372,7 @@ function App() {
 
           {screen === "media" && mediaTab && (
             <MediaViewer
+              key={mediaTab}
               initialTab={mediaTab}
               onBack={closeMediaViewer}
               controller={controllerType}
