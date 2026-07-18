@@ -3,32 +3,41 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct AppConfig {
     pub game_paths: Vec<String>,
+    pub recent_games: Vec<String>,
     pub auto_launch: bool,
     pub minimize_to_tray: bool,
     pub hints_visible: bool,
     pub bg_video: String,
     pub bg_video_enabled: bool,
     pub bg_dimmed: f64,
+    pub ui_opacity: f64,
+    pub game_card_opacity: f64,
     pub accent_color: String,
     pub start_screen: String,
     pub show_game_covers: bool,
+    pub language: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             game_paths: Vec::new(),
+            recent_games: Vec::new(),
             auto_launch: false,
             minimize_to_tray: true,
             hints_visible: true,
             bg_video: "S1.mp4".to_string(),
             bg_video_enabled: true,
             bg_dimmed: 0.8,
+            ui_opacity: 0.85,
+            game_card_opacity: 0.8,
             accent_color: "#2d7aff".to_string(),
             start_screen: "home".to_string(),
             show_game_covers: true,
+            language: "ru".to_string(),
         }
     }
 }

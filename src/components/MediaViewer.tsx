@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { useLocale } from "../hooks/useLocale";
 
 interface MediaFile {
   name: string;
@@ -79,6 +80,7 @@ function VideoThumbnail({ path }: { path: string }) {
 }
 
 export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons, showHints, onToggleHints }: Props) {
+  const { t } = useLocale();
   const [tabIdx, setTabIdx] = useState(initialTab === "videos" ? 1 : 0);
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -239,8 +241,8 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
 
       {files.length === 0 ? (
         <div className="media-viewer-empty">
-          <p>Нет файлов</p>
-          <p className="empty-hint">Добавьте {tabIdx === 0 ? "изображения" : "видео"} в папку</p>
+          <p>{t("no_files")}</p>
+          <p className="empty-hint">{tabIdx === 0 ? t("add_images") : t("add_videos")}</p>
         </div>
       ) : (
         <div className="media-viewer-grid">
@@ -268,10 +270,10 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
       {confirmDelete && createPortal(
         <div className="confirm-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-title">Вы уверены?</div>
+            <div className="confirm-title">{t("confirm_question")}</div>
             <div className="confirm-actions">
-              <button className="confirm-btn confirm-no" onClick={() => setConfirmDelete(null)}>Нет</button>
-              <button className="confirm-btn confirm-yes" onClick={() => del(confirmDelete)}>Да</button>
+              <button className="confirm-btn confirm-no" onClick={() => setConfirmDelete(null)}>{t("no")}</button>
+              <button className="confirm-btn confirm-yes" onClick={() => del(confirmDelete)}>{t("yes")}</button>
             </div>
           </div>
         </div>,
@@ -280,21 +282,21 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
 
       <footer className={`bottom-bar ${showHints ? "visible" : ""}`}>
         <div className="bottom-bar-inner" style={{ justifyContent: "center", gap: 32 }}>
-          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.ConfirmIcon /></span>Открыть</div>
-          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.BackIcon /></span>Назад</div>
+          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.ConfirmIcon /></span>{t("open")}</div>
+          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.BackIcon /></span>{t("back")}</div>
           <div className="bottom-hint">
             {controller === "xbox"
               ? <img src="/icons/XBOX_iconpack/button_xbox_digital_x_1.svg" className="hint-icon-img" draggable={false} />
               : <span className="hint-icon-char">□</span>}
-            Удалить
+            {t("delete")}
           </div>
           <div className="bottom-hint">
             {controller === "xbox"
               ? <img src="/icons/XBOX_iconpack/button_xbox_digital_y_1.svg" className="hint-icon-img" draggable={false} />
               : <span className="hint-icon-char">△</span>}
-            Скрыть
+            {showHints ? t("hide") : t("show")}
           </div>
-          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.DpadNav /></span>Навигация</div>
+          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.DpadNav /></span>{t("navigation")}</div>
         </div>
       </footer>
     </div>

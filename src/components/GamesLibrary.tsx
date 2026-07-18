@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { useLocale } from "../hooks/useLocale";
 import type { GameEntry } from "../types";
 
 interface Props {
@@ -9,9 +10,11 @@ interface Props {
   onFocusChange: (index: number) => void;
   showFocus: boolean;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
+  libColsRef?: React.MutableRefObject<number>;
 }
 
-export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChange, showFocus, searchInputRef }: Props) {
+export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChange, showFocus, searchInputRef, libColsRef }: Props) {
+  const { t, plural } = useLocale();
   const gridRef = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(4);
   const [query, setQuery] = useState("");
@@ -31,6 +34,8 @@ export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChan
     return () => obs.disconnect();
   }, [games]);
 
+  useEffect(() => { if (libColsRef) libColsRef.current = cols; }, [cols, libColsRef]);
+
   const filtered = query.trim()
     ? games.filter((g) => g.name.toLowerCase().includes(query.toLowerCase()))
     : games;
@@ -39,7 +44,7 @@ export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChan
     return (
       <div className="loading-screen">
         <div className="loading-spinner" />
-        <p>Загрузка библиотеки...</p>
+        <p>{t("loading")}...</p>
       </div>
     );
   }
@@ -47,14 +52,14 @@ export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChan
   return (
     <div className="games-library">
       <div className="library-header">
-        <h2 className="library-title">Библиотека</h2>
+        <h2 className="library-title">{t("library")}</h2>
         <div className="search-box">
           <span className="search-icon">🔍</span>
           <input
             ref={searchInputRef}
             className="search-input"
             type="text"
-            placeholder="Поиск игр..."
+            placeholder={t("search_placeholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => onFocusChange(-1)}
@@ -67,8 +72,8 @@ export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChan
 
       <div className={`library-count ${filtered.length === 0 ? "empty" : ""}`}>
         {filtered.length === 0
-          ? "Ничего не найдено"
-          : `${filtered.length} ${filtered.length === 1 ? "игра" : "игр"}`}
+          ? t("nothing_found")
+          : plural(filtered.length, "game_found")}
       </div>
 
       <div className="library-grid" ref={gridRef}>
@@ -93,8 +98,8 @@ export function GamesLibrary({ games, loading, onLaunch, focusIndex, onFocusChan
 
       {games.length === 0 && (
         <div className="empty-state">
-          <p>Игры не найдены</p>
-          <p className="empty-hint">Установите игры через Steam, Epic Games или вручную</p>
+          <p>{t("not_found")}</p>
+          <p className="empty-hint">{t("not_found_hint")}</p>
         </div>
       )}
     </div>

@@ -12,8 +12,6 @@ export type GamepadAction =
 type GamepadCallback = (action: GamepadAction) => void;
 
 const DEADZONE = 0.5;
-const REPEAT_DELAY = 300;
-const REPEAT_RATE = 150;
 
 function detectController(id: string): ControllerType {
   const lower = id.toLowerCase();
@@ -34,8 +32,7 @@ export function useGamepad(callback: GamepadCallback) {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
 
-  const lastInputRef = useRef<Record<string, number>>({});
-  const lastRepeatedActionRef = useRef<GamepadAction | null>(null);
+  const lastFiredRef = useRef<GamepadAction | null>(null);
 
   const getAction = useCallback((gamepad: Gamepad): GamepadAction | null => {
     const b = gamepad.buttons;
@@ -82,26 +79,14 @@ export function useGamepad(callback: GamepadCallback) {
       });
 
       const action = getAction(gp);
-      const now = Date.now();
 
       if (action) {
-        const last = lastInputRef.current[action] || 0;
-        const repeat = ["up", "down", "left", "right"].includes(action);
-        const delay = repeat ? REPEAT_DELAY : 200;
-        const rate = repeat ? REPEAT_RATE : 0;
-
-        if (action === lastRepeatedActionRef.current && rate > 0) {
-          if (now - last >= rate) {
-            callbackRef.current(action);
-            lastInputRef.current[action] = now;
-          }
-        } else if (now - last >= delay) {
+        if (action !== lastFiredRef.current) {
           callbackRef.current(action);
-          lastInputRef.current[action] = now;
-          lastRepeatedActionRef.current = action;
+          lastFiredRef.current = action;
         }
       } else {
-        lastRepeatedActionRef.current = null;
+        lastFiredRef.current = null;
       }
 
       requestAnimationFrame(poll);

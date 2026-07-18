@@ -1,7 +1,8 @@
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::Manager;
+use tauri::State;
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -33,7 +34,7 @@ pub fn scan_all_games() -> Vec<GameEntry> {
         }
     }
 
-    games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    games.sort_by_key(|a| a.name.to_lowercase());
     games
 }
 
@@ -43,24 +44,27 @@ fn scan_steam_games() -> Vec<GameEntry> {
         return games;
     };
 
-    let library_file = steam_path.join("steamapps").join("libraryfolders.vdf");
-    let Ok(content) = std::fs::read_to_string(&library_file) else {
-        scan_steam_library(&steam_path, &mut games);
-        return games;
-    };
+    let mut scanned = std::collections::HashSet::new();
 
-    for line in content.lines() {
-        if let Some(path_part) = line.split('"').nth(3) {
-            let lib_path = PathBuf::from(path_part.replace("\\\\", "\\"));
-            scan_steam_library(&lib_path, &mut games);
+    let library_file = steam_path.join("steamapps").join("libraryfolders.vdf");
+    if let Ok(content) = std::fs::read_to_string(&library_file) {
+        for line in content.lines() {
+            if let Some(path_part) = line.split('"').nth(3) {
+                let lib_path = PathBuf::from(path_part.replace("\\\\", "\\"));
+                if scanned.insert(lib_path.clone()) {
+                    scan_steam_library(&lib_path, &mut games);
+                }
+            }
         }
     }
 
-    scan_steam_library(&steam_path, &mut games);
+    if scanned.insert(steam_path.clone()) {
+        scan_steam_library(&steam_path, &mut games);
+    }
     games
 }
 
-fn scan_steam_library(path: &PathBuf, games: &mut Vec<GameEntry>) {
+fn scan_steam_library(path: &Path, games: &mut Vec<GameEntry>) {
     let apps_dir = path.join("steamapps");
     let Ok(entries) = std::fs::read_dir(&apps_dir) else {
         return;
@@ -303,13 +307,23 @@ pub fn scan_games(state: tauri::State<crate::config::ConfigState>) -> Vec<GameEn
 }
 
 #[tauri::command]
-pub fn launch_game(path: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+pub fn launch_game(
+    path: String,
+    state: State<crate::config::ConfigState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     if path.is_empty() {
         return Err("Empty path".into());
     }
     Command::new(&path)
         .spawn()
         .map_err(|e| format!("Failed to launch: {}", e))?;
+
+    let mut cfg = state.0.lock().unwrap();
+    cfg.recent_games.retain(|p| p != &path);
+    cfg.recent_games.insert(0, path.clone());
+    cfg.recent_games.truncate(10);
+    cfg.save();
 
     if let Some(win) = app_handle.get_webview_window("main") {
         let _ = win.hide();
