@@ -130,4 +130,4 @@ npm run tauri build
 
 ## Лицензия
 
-MIT
+[MIT](LICENSE)
