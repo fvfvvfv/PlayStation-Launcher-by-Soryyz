@@ -236,7 +236,7 @@ export function MediaViewer({ initialTab, onBack, onTabChange, icons, showHints,
       const vibrateForAction = (action: string) => {
         switch (action) {
           case "up": case "down": case "left": case "right":
-            vibrate(gamepad, 38, 0.6, 0.6); break;
+            vibrate(gamepad, 50, 1.0, 0.8); break;
           case "confirm":
             vibrate(gamepad, 63, 1.0, 1.0); break;
           case "back":
