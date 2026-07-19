@@ -21,12 +21,13 @@ export function MediaScreen({ games, recentGames, onOpenViewer, onOpenLibrary, f
   const { t, plural } = useLocale();
   const [counts, setCounts] = useState<Counts>({ screenshots: 0, videos: 0 });
 
-  const recent = recentGames.length > 0
+  const allRecent = recentGames.length > 0
     ? recentGames.map(p => games.find(g => g.path === p)).filter((g): g is NonNullable<typeof g> => !!g)
-    : games.slice(0, 3);
-  const hasRecent = recent.length > 0;
-  const screenshotsIdx = hasRecent ? 1 : 0;
-  const videosIdx = hasRecent ? 2 : 1;
+    : [];
+  const recent = allRecent.slice(0, 4);
+  const recentLimit = recent.length;
+  const screenshotsIdx = recentLimit;
+  const videosIdx = recentLimit + 1;
 
   useEffect(() => {
     invoke<Counts>("get_media_counts").then(setCounts).catch(() => {});
@@ -40,12 +41,16 @@ export function MediaScreen({ games, recentGames, onOpenViewer, onOpenLibrary, f
     <div className="media-screen">
       <h2 className="media-title">{t("media_title")}</h2>
 
-      {hasRecent && (
+      {recentLimit > 0 && (
         <section className="media-section">
           <h3 className="media-section-title">{t("recent_games")}</h3>
           <div className="media-recent-list">
-            {recent.map((game) => (
-              <div key={game.path} className="media-recent-card" onClick={onOpenLibrary}>
+            {recent.map((game, i) => (
+              <div
+                key={game.path}
+                className={`media-recent-card ${showFocus && focusIndex === i ? "focused" : ""}`}
+                onClick={onOpenLibrary}
+              >
                 <div className="media-recent-icon">
                   {game.name.charAt(0).toUpperCase()}
                 </div>

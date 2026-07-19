@@ -199,6 +199,10 @@ html, body, #root {
   z-index: 1;
 }
 
+.main-content:has(.media-viewer) {
+  padding-bottom: 0;
+}
+
 .main-content::-webkit-scrollbar {
   width: 4px;
 }
@@ -315,8 +319,8 @@ html, body, #root {
   display: flex;
   gap: 16px;
   overflow-x: auto;
-  padding: 8px 4px 12px;
-  margin: -8px -4px -12px;
+  padding: 20px 20px 40px;
+  margin: -20px -20px -40px;
 }
 
 .games-strip::-webkit-scrollbar {
@@ -343,7 +347,6 @@ html, body, #root {
   -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius);
   border: 2px solid transparent;
-  overflow: hidden;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
   font-family: var(--font);
@@ -356,7 +359,7 @@ html, body, #root {
 .game-tile.focused {
   transform: scale(1.05);
   border-color: var(--accent);
-  box-shadow: 0 8px 32px var(--accent-glow);
+  box-shadow: 0 4px 16px var(--accent-glow);
 }
 
 .game-tile-bg {
@@ -368,6 +371,7 @@ html, body, #root {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 
 .game-tile-bg::before {
@@ -393,6 +397,7 @@ html, body, #root {
 
 .game-tile-info {
   padding: 14px 16px;
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 .game-tile-name {
@@ -506,7 +511,7 @@ html, body, #root {
 
 .tab-hint.visible {
   opacity: 0.5;
-  width: 28px;
+  width: 36px;
   pointer-events: auto;
 }
 
@@ -1311,13 +1316,18 @@ html, body, #root {
   background: rgb(26 26 36 / var(--card-alpha, 0.8));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  border: 2px solid transparent;
   border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 
-.media-recent-card:hover {
+.media-recent-card:hover,
+.media-recent-card.selected,
+.media-recent-card.focused {
   background: rgb(26 26 36 / 0.9);
+  border-color: var(--accent);
+  box-shadow: 0 0 16px var(--accent-glow);
 }
 
 .media-recent-icon {
@@ -1548,7 +1558,7 @@ html, body, #root {
 
 .media-tab-hint.visible {
   opacity: 0.5;
-  width: 28px;
+  width: 36px;
   pointer-events: auto;
 }
 
@@ -1575,11 +1585,30 @@ html, body, #root {
 }
 
 /* Media Viewer */
-.media-viewer {
-  padding: 8px 0 32px;
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
 }
 
+.media-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  justify-content: space-between;
+}
+
+.media-viewer .bottom-bar {
+  margin-bottom: 10px;
+}
+
+
+
 .media-viewer-empty {
+  flex: 1;
   text-align: center;
   padding: 80px 0;
   color: var(--text-muted);
@@ -1587,9 +1616,12 @@ html, body, #root {
 }
 
 .media-viewer-grid {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
+  overflow-y: auto;
+  align-content: start;
 }
 
 .media-viewer-item {
@@ -1775,7 +1807,8 @@ html, body, #root {
   color: #ff4444;
 }
 
-.confirm-no:hover {
+.confirm-no:hover,
+.confirm-no.focused {
   background: rgba(255, 68, 68, 0.15);
 }
 
@@ -1783,7 +1816,8 @@ html, body, #root {
   border-color: var(--border);
 }
 
-.confirm-yes:hover {
+.confirm-yes:hover,
+.confirm-yes.focused {
   background: var(--bg-card-hover);
 }
 

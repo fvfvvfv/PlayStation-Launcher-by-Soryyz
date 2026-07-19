@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { vibrate } from "./vibrate";
 
 export type ControllerType = "ps" | "xbox" | "generic" | "none";
 
@@ -25,6 +26,29 @@ function detectController(id: string): ControllerType {
     return "generic";
   }
   return "none";
+}
+
+function vibrateForAction(gamepad: Gamepad, action: GamepadAction) {
+  switch (action) {
+    case "up": case "down": case "left": case "right":
+      vibrate(gamepad, 38, 0.6, 0.6);
+      break;
+    case "confirm":
+      vibrate(gamepad, 63, 1.0, 1.0);
+      break;
+    case "back":
+      vibrate(gamepad, 50, 0.75, 0.75);
+      break;
+    case "lb": case "rb":
+      vibrate(gamepad, 88, 1.0, 1.0);
+      break;
+    case "delete":
+      vibrate(gamepad, 100, 1.0, 1.0);
+      break;
+    case "toggle_hints":
+      vibrate(gamepad, 50, 0.75, 0.75);
+      break;
+  }
 }
 
 export function useGamepad(callback: GamepadCallback) {
@@ -82,6 +106,7 @@ export function useGamepad(callback: GamepadCallback) {
 
       if (action) {
         if (action !== lastFiredRef.current) {
+          vibrateForAction(gp, action);
           callbackRef.current(action);
           lastFiredRef.current = action;
         }

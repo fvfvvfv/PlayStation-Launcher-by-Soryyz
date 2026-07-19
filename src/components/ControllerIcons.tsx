@@ -4,15 +4,27 @@ interface Props {
   type: ControllerType;
 }
 
-function SvgIcon({ path, flip }: { path: string; flip?: boolean }) {
+export interface Icons {
+  ConfirmIcon: () => React.ReactNode;
+  BackIcon: () => React.ReactNode;
+  LbIcon: () => React.ReactNode;
+  RbIcon: () => React.ReactNode;
+  TabLIcon: () => React.ReactNode;
+  TabRIcon: () => React.ReactNode;
+  DpadNav: () => React.ReactNode;
+  SearchIcon: () => React.ReactNode;
+  ToggleIcon: () => React.ReactNode;
+}
+
+function SvgIcon({ path, flip, size = 36 }: { path: string; flip?: boolean; size?: number }) {
   return (
     <img
       src={path}
       alt=""
       draggable={false}
       style={{
-        width: 28,
-        height: 28,
+        width: size,
+        height: size,
         display: "block",
         transform: flip ? "scaleX(-1)" : undefined,
       }}
@@ -20,32 +32,30 @@ function SvgIcon({ path, flip }: { path: string; flip?: boolean }) {
   );
 }
 
-export function ControllerIcons({ type }: Props) {
+export function ControllerIcons({ type }: Props): Icons {
   if (type === "ps") {
     return {
-      ConfirmIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS L1.svg" />,
-      BackIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS R1.svg" />,
+      ConfirmIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS Cross 1.svg" />,
+      BackIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS Circle 1.svg" />,
       LbIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS L1.svg" />,
       RbIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS R1.svg" />,
+      TabLIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS L1.svg" />,
+      TabRIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS R1.svg" />,
       DpadNav: () => <SvgIcon path="/icons/PS_iconpack/Button - PS Directional Arrows.svg" />,
-    };
-  }
-
-  if (type === "xbox") {
-    return {
-      ConfirmIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_a_1.svg" />,
-      BackIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_b_1.svg" />,
-      LbIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_bumper_dark_1.svg" />,
-      RbIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_bumper_dark_1.svg" flip />,
-      DpadNav: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_dpad_dark_1.svg" />,
+      SearchIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS Square 1.svg" />,
+      ToggleIcon: () => <SvgIcon path="/icons/PS_iconpack/Button - PS Triangle 1.svg" />,
     };
   }
 
   return {
-    ConfirmIcon: () => <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.5 }}>✓</span>,
-    BackIcon: () => <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.5 }}>✕</span>,
-    LbIcon: () => <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.5 }}>◀</span>,
-    RbIcon: () => <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.5 }}>▶</span>,
-    DpadNav: () => <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.5 }}>◆</span>,
+    ConfirmIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_a_1.svg" />,
+    BackIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_b_1.svg" />,
+    LbIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_bumper_dark_1.svg" />,
+    RbIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_bumper_dark_2.svg" />,
+    TabLIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_bumper_dark_1.svg" />,
+    TabRIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_bumper_dark_2.svg" />,
+    DpadNav: () => <SvgIcon path="/icons/XBOX_iconpack/button_xboxone_dpad_dark_7.svg" />,
+    SearchIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_x_1.svg" />,
+    ToggleIcon: () => <SvgIcon path="/icons/XBOX_iconpack/button_xbox_digital_y_1.svg" />,
   };
 }

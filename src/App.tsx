@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useGamepad, type ControllerType } from "./hooks/useGamepad";
+import { useGamepad } from "./hooks/useGamepad";
 import { useGames } from "./hooks/useGames";
 import { VideoIntro } from "./components/VideoIntro";
 import { GamesLibrary } from "./components/GamesLibrary";
@@ -87,7 +87,7 @@ function App() {
       const cfg = await invoke<{
         hints_visible: boolean; bg_video: string; bg_video_enabled: boolean; bg_dimmed: number;
         ui_opacity: number; game_card_opacity: number; accent_color: string; start_screen: string; language: string;
-        recent_games: string[];
+        recent_games: string[]; controller_theme: string;
       }>("get_config");
       if (cfg.hints_visible !== undefined) setHintsVisible(cfg.hints_visible);
       if (cfg.bg_video) setBgVideo(cfg.bg_video);
@@ -99,6 +99,7 @@ function App() {
       if (cfg.start_screen) setStartScreen(cfg.start_screen);
       if (cfg.language && ["ru", "en", "uk", "be", "kk", "uz"].includes(cfg.language)) setLang(cfg.language as Lang);
       if (cfg.recent_games) setRecentGames(cfg.recent_games);
+      if (cfg.controller_theme) setControllerTheme(cfg.controller_theme);
     } catch {}
   }, []);
 
@@ -278,8 +279,11 @@ function App() {
       }
 
       if (cs === "media") {
-        const hasRecent = games.length > 0;
-        const totalItems = (hasRecent ? 1 : 0) + 2;
+        const recent = recentGames.length > 0
+          ? recentGames.map(p => games.find(g => g.path === p)).filter((g): g is NonNullable<typeof g> => !!g)
+          : [];
+        const recentLimit = Math.min(recent.length, 4);
+        const totalItems = recentLimit + 2;
         switch (action) {
           case "up":
             setMediaFocus((i) => Math.max(i - 1, 0));
@@ -295,9 +299,9 @@ function App() {
             return;
           case "confirm": {
             const fi = mediaFocusRef.current;
-            if (hasRecent && fi === 0) { changeScreen("games"); return; }
-            if (fi === (hasRecent ? 1 : 0)) { openMediaViewer("screenshots"); return; }
-            if (fi === (hasRecent ? 2 : 1)) { openMediaViewer("videos"); return; }
+            if (fi < recentLimit) { changeScreen("games"); return; }
+            if (fi === recentLimit) { openMediaViewer("screenshots"); return; }
+            if (fi === recentLimit + 1) { openMediaViewer("videos"); return; }
             return;
           }
         }
@@ -325,12 +329,15 @@ function App() {
     [games.length, handleLaunch]
   );
 
-  const controllerType = useGamepad(handleGamepad);
-  const hasGamepad = controllerType !== "none";
+  const [controllerTheme, setControllerTheme] = useState("ps");
+
+  const actualControllerType = useGamepad(handleGamepad);
+  const effectiveControllerType = controllerTheme === "ps" ? "ps" as const : "xbox" as const;
+  const hasGamepad = actualControllerType !== "none";
   const showFocus = hasGamepad;
   const showHints = hasGamepad && inputMode === "gamepad" && hintsVisible;
 
-  const icons = ControllerIcons({ type: controllerType });
+  const icons = ControllerIcons({ type: effectiveControllerType });
   const visibleGames = useMemo(() => {
     if (recentGames.length > 0) {
       const ordered = recentGames
@@ -363,7 +370,7 @@ function App() {
               </button>
               <div className={`top-bar-media-tabs ${showHints ? "with-hints" : ""}`}>
                 <div className={`media-tab-hint left ${showHints ? "visible" : ""}`}>
-                  <icons.LbIcon />
+                  <icons.TabLIcon />
                 </div>
                 {MEDIA_TABS.map((tab) => (
                   <button
@@ -375,7 +382,7 @@ function App() {
                   </button>
                 ))}
                 <div className={`media-tab-hint right ${showHints ? "visible" : ""}`}>
-                  <icons.RbIcon />
+                  <icons.TabRIcon />
                 </div>
               </div>
             </div>
@@ -388,7 +395,7 @@ function App() {
                   </svg>
                 </div>
                 <div className={`tab-hint left ${showHints ? "visible" : ""} ${screen === "home" ? "no-op" : ""}`}>
-                  <icons.LbIcon />
+                  <icons.TabLIcon />
                 </div>
                 {TOP_ITEMS.map((item) => (
                   <button
@@ -400,26 +407,10 @@ function App() {
                   </button>
                 ))}
                 <div className={`tab-hint right ${showHints ? "visible" : ""} ${screen === "settings" ? "no-op" : ""}`}>
-                  <icons.RbIcon />
+                  <icons.TabRIcon />
                 </div>
               </div>
               <div className="top-bar-right">
-                <div className="controller-badge" style={{
-                  width: 22, height: 22,
-                  transition: "opacity 0.3s ease",
-                  opacity: inputMode === "gamepad" && controllerType !== "none" ? 0.5 : 0,
-                  pointerEvents: "none",
-                }}>
-                  <img
-                    src={controllerType === "ps"
-                      ? "/icons/PS_iconpack/Button - PS Home 2.svg"
-                      : controllerType === "xbox"
-                        ? "/icons/XBOX_iconpack/button_xbox_digital_home_white.svg"
-                        : ""}
-                    alt=""
-                    style={{ width: 22, height: 22, display: "block" }}
-                  />
-                </div>
                 <div className="time-display">
                   {new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
                 </div>
@@ -521,7 +512,6 @@ function App() {
               key={mediaTab}
               initialTab={mediaTab}
               onBack={closeMediaViewer}
-              controller={controllerType}
               icons={icons}
               onTabChange={setMediaTab}
               showHints={showHints}
@@ -542,11 +532,14 @@ function App() {
               onLangChange={setLang}
               settingsDirtyRef={settingsDirtyRef}
               settingsSaveRef={settingsSaveRef}
+              controllerTheme={controllerTheme}
+              onControllerThemeChange={setControllerTheme}
             />
           )}
         </main>
 
-        <footer className={`bottom-bar ${showHints && !mediaTab ? "visible" : ""}`}>
+        {!mediaTab && (
+        <footer className={`bottom-bar ${showHints ? "visible" : ""}`}>
           <div className="bottom-bar-inner">
             <div className="bottom-hint">
               <icons.ConfirmIcon /> {localeCtx.t("select")}
@@ -558,16 +551,14 @@ function App() {
               <icons.LbIcon /> <icons.RbIcon /> {localeCtx.t("tabs")}
             </div>
             <div className="bottom-hint">
-              {controllerType === "xbox"
-                ? <img src="/icons/XBOX_iconpack/button_xbox_digital_y_1.svg" className="hint-icon-img" draggable={false} />
-                : <span className="hint-icon-char">△</span>}
-              {hintsVisible ? localeCtx.t("hide") : localeCtx.t("show")}
+              <icons.ToggleIcon /> {hintsVisible ? localeCtx.t("hide") : localeCtx.t("show")}
             </div>
             <div className="bottom-hint">
               <icons.DpadNav /> {localeCtx.t("navigation")}
             </div>
           </div>
         </footer>
+        )}
       </div>
 
       {pendingScreen && (

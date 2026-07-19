@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLocale } from "../hooks/useLocale";
@@ -52,6 +53,7 @@ interface AppConfig {
   start_screen: string;
   show_game_covers: boolean;
   language: string;
+  controller_theme: string;
 }
 
 interface Props {
@@ -66,6 +68,8 @@ interface Props {
   onLangChange: (v: Lang) => void;
   settingsDirtyRef: React.MutableRefObject<boolean>;
   settingsSaveRef: React.MutableRefObject<() => Promise<void>>;
+  controllerTheme: string;
+  onControllerThemeChange: (v: string) => void;
 }
 
 const defaultConfig: AppConfig = {
@@ -82,12 +86,13 @@ const defaultConfig: AppConfig = {
   start_screen: "home",
   show_game_covers: true,
   language: "ru",
+  controller_theme: "ps",
 };
 
 export function SettingsScreen({
   onRefreshGames, uiOpacity, onUiOpacityChange, gameCardOpacity, onGameCardOpacityChange,
-  accentColor, onAccentColorChange, lang, onLangChange,
-  settingsDirtyRef, settingsSaveRef,
+  onAccentColorChange, lang, onLangChange,
+  settingsDirtyRef, settingsSaveRef, controllerTheme, onControllerThemeChange,
 }: Props) {
   const { t } = useLocale();
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -113,23 +118,34 @@ export function SettingsScreen({
   }, []);
 
   useEffect(() => {
-    invoke<AppConfig>("get_config").then((cfg) => {
-      setConfig({
-        game_paths: cfg.game_paths || [],
-        auto_launch: cfg.auto_launch ?? false,
-        minimize_to_tray: cfg.minimize_to_tray ?? true,
-        hints_visible: cfg.hints_visible ?? true,
-        bg_video: cfg.bg_video || "S1.mp4",
-        bg_video_enabled: cfg.bg_video_enabled ?? true,
-        bg_dimmed: cfg.bg_dimmed ?? 0.8,
-        ui_opacity: cfg.ui_opacity ?? 0.85,
-        game_card_opacity: cfg.game_card_opacity ?? 0.8,
-        accent_color: cfg.accent_color || "#2d7aff",
-        start_screen: cfg.start_screen || "home",
-        show_game_covers: cfg.show_game_covers ?? true,
-        language: (cfg.language === "en" ? "en" : "ru") as Lang,
+    let retries = 0;
+    const fetchConfig = () => {
+      invoke<AppConfig>("get_config").then((cfg) => {
+        setConfig({
+          game_paths: cfg.game_paths || [],
+          auto_launch: cfg.auto_launch ?? false,
+          minimize_to_tray: cfg.minimize_to_tray ?? true,
+          hints_visible: cfg.hints_visible ?? true,
+          bg_video: cfg.bg_video || "S1.mp4",
+          bg_video_enabled: cfg.bg_video_enabled ?? true,
+          bg_dimmed: cfg.bg_dimmed ?? 0.8,
+          ui_opacity: cfg.ui_opacity ?? 0.85,
+          game_card_opacity: cfg.game_card_opacity ?? 0.8,
+          accent_color: cfg.accent_color || "#2d7aff",
+          start_screen: cfg.start_screen || "home",
+          show_game_covers: cfg.show_game_covers ?? true,
+          language: (cfg.language === "en" ? "en" : "ru") as Lang,
+          controller_theme: cfg.controller_theme || "ps",
+        });
+      }).catch((err) => {
+        console.error("Failed to load config", err);
+        if (retries < 3) {
+          retries++;
+          setTimeout(fetchConfig, 500 * retries);
+        }
       });
-    }).catch(console.error);
+    };
+    fetchConfig();
   }, []);
 
   const doSave = useCallback(async (updated: AppConfig) => {
@@ -160,6 +176,7 @@ export function SettingsScreen({
       onUiOpacityChange(0.85);
       onGameCardOpacityChange(0.8);
       onAccentColorChange("#2d7aff");
+      onControllerThemeChange("ps");
       setResetConfirm(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -189,7 +206,18 @@ export function SettingsScreen({
     }
   }, [colorPickerOpen]);
 
-  if (!config) return null;
+  if (!config) {
+    return (
+      <div className="settings-screen">
+        <div className="settings-header">
+          <h2 className="settings-title">{t("settings_title")}</h2>
+        </div>
+        <div className="loading-screen">
+          <p>{t("loading")}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-screen">
@@ -289,16 +317,17 @@ export function SettingsScreen({
           <div className="settings-row">
             <span>{t("accent_color")}</span>
             <div className="color-picker-wrap" ref={colorRef}>
-              <button className="color-picker-btn" style={{ background: config.accent_color }} onClick={(e) => { const r = (e.target as HTMLElement).getBoundingClientRect(); setColorPos({ top: r.top, left: r.right + 8 }); setColorPickerOpen((v) => !v); }}>
+              <button className="color-picker-btn" style={{ background: config.accent_color }} onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setColorPos({ top: r.bottom + 4, left: r.left }); setColorPickerOpen((v) => !v); }}>
                 <span className="color-picker-label">{t("choose")}</span>
               </button>
-              {colorPickerOpen && (
+              {colorPickerOpen && createPortal(
                 <div className="color-picker-grid" ref={colorGridRef} style={{ position: "fixed", top: colorPos.top, left: colorPos.left }}>
                   {ACCENT_PRESETS.map((color) => (
                     <button key={color} className={`color-preset ${config.accent_color === color ? "active" : ""}`} style={{ background: color }} onClick={() => { update({ accent_color: color }); onAccentColorChange(color); setColorPickerOpen(false); }} />
                   ))}
                   <button className="color-preset custom" onClick={() => { const input = document.createElement("input"); input.type = "color"; input.value = config.accent_color; input.oninput = () => { update({ accent_color: input.value }); onAccentColorChange(input.value); }; input.click(); setColorPickerOpen(false); }} title={t("custom_color")}><span>+</span></button>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           </div>
@@ -330,6 +359,16 @@ export function SettingsScreen({
                   onClick={() => { onLangChange(l); update({ language: l }); }}
                 >
                   {langNames[l]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-row">
+            <span>{t("controller_theme")}</span>
+            <div className="lang-selector">
+              {(["ps", "xbox"] as const).map((v) => (
+                <button key={v} className={`lang-btn ${controllerTheme === v ? "active" : ""}`} onClick={() => { onControllerThemeChange(v); update({ controller_theme: v }); }}>
+                  {t("controller_" + v)}
                 </button>
               ))}
             </div>

@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useLocale } from "../hooks/useLocale";
+import { vibrate } from "../hooks/vibrate";
 
 interface MediaFile {
   name: string;
@@ -14,11 +15,14 @@ interface Props {
   initialTab: "screenshots" | "videos";
   onBack: () => void;
   onTabChange: (tab: "screenshots" | "videos") => void;
-  controller: string;
   icons: {
-    ConfirmIcon: () => JSX.Element;
-    BackIcon: () => JSX.Element;
-    DpadNav: () => JSX.Element;
+    ConfirmIcon: () => ReactNode;
+    BackIcon: () => ReactNode;
+    LbIcon: () => ReactNode;
+    RbIcon: () => ReactNode;
+    DpadNav: () => ReactNode;
+    SearchIcon: () => ReactNode;
+    ToggleIcon: () => ReactNode;
   };
   showHints: boolean;
   onToggleHints: () => void;
@@ -27,7 +31,6 @@ interface Props {
 const TABS: ("screenshots" | "videos")[] = ["screenshots", "videos"];
 
 const _cache: Record<string, MediaFile[]> = {};
-let _cacheKey = "";
 
 function VideoThumbnail({ path }: { path: string }) {
   const [state, setState] = useState<"loading" | "ok" | "err">("loading");
@@ -79,15 +82,18 @@ function VideoThumbnail({ path }: { path: string }) {
   return <div className="media-viewer-video-thumb"><span>🎥</span></div>;
 }
 
-export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons, showHints, onToggleHints }: Props) {
+export function MediaViewer({ initialTab, onBack, onTabChange, icons, showHints, onToggleHints }: Props) {
   const { t } = useLocale();
   const [tabIdx, setTabIdx] = useState(initialTab === "videos" ? 1 : 0);
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [preview, setPreview] = useState<MediaFile | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmFocus, setConfirmFocus] = useState(0);
+  const [cols, setCols] = useState(4);
   const mountedRef = useRef(true);
   const prevRef = useRef(new Map<string, number>());
+  const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
@@ -97,6 +103,21 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
     setPreview(null);
     setConfirmDelete(null);
   }, [initialTab]);
+
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const calc = () => {
+      const style = getComputedStyle(el);
+      const template = style.gridTemplateColumns;
+      const count = template.split(" ").filter((s) => s.trim() && s !== "none").length;
+      if (count > 0) setCols(count);
+    };
+    calc();
+    const obs = new ResizeObserver(calc);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [files]);
 
   const load = useCallback((idx: number) => {
     const key = TABS[idx];
@@ -138,8 +159,9 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (confirmDelete) {
-        if (e.key === "Escape") setConfirmDelete(null);
-        else if (e.key === "Enter") { del(confirmDelete); }
+        if (e.key === "Escape") { setConfirmDelete(null); return; }
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") { setConfirmFocus((f) => (f === 0 ? 1 : 0)); return; }
+        if (e.key === "Enter") { if (confirmFocus === 1) del(confirmDelete); else setConfirmDelete(null); return; }
         return;
       }
       if (preview) {
@@ -151,14 +173,15 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onBack, preview, selected, files, confirmDelete, del]);
+  }, [onBack, preview, selected, files, confirmDelete, del, confirmFocus]);
 
   const handleAction = useCallback(
     (action: string) => {
       if (!mountedRef.current) return;
       if (confirmDelete) {
-        if (action === "back") setConfirmDelete(null);
-        else if (action === "confirm") del(confirmDelete);
+        if (action === "left" || action === "right") { setConfirmFocus((f) => (f === 0 ? 1 : 0)); return; }
+        if (action === "confirm") { if (confirmFocus === 1) del(confirmDelete); else setConfirmDelete(null); return; }
+        if (action === "back") { setConfirmDelete(null); return; }
         return;
       }
       if (preview) {
@@ -175,12 +198,10 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
           setSelected((i) => (i === null ? 0 : Math.min(i + 1, files.length - 1)));
           break;
         case "up": {
-          const cols = Math.max(1, Math.min(4, Math.floor(window.innerWidth / 200)));
           setSelected((i) => (i === null || i < cols ? 0 : i - cols));
           break;
         }
         case "down": {
-          const cols = Math.max(1, Math.min(4, Math.floor(window.innerWidth / 200)));
           setSelected((i) => (i === null ? 0 : Math.min(i + cols, files.length - 1)));
           break;
         }
@@ -188,7 +209,7 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
           if (selected !== null && files[selected]) setPreview(files[selected]);
           break;
         case "delete":
-          if (selected !== null && files[selected]) setConfirmDelete(files[selected].path);
+          if (selected !== null && files[selected]) { setConfirmDelete(files[selected].path); setConfirmFocus(0); }
           break;
         case "lb":
           switchTab(Math.max(0, tabIdx - 1));
@@ -201,7 +222,7 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
           break;
       }
     },
-    [onBack, files, selected, preview, tabIdx, switchTab, confirmDelete, del, onToggleHints]
+    [onBack, files, selected, preview, tabIdx, switchTab, confirmDelete, del, onToggleHints, cols, confirmFocus]
   );
 
   useEffect(() => {
@@ -209,6 +230,26 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
       const gamepad = Array.from(navigator.getGamepads()).find((g) => g !== null);
       if (!gamepad) return;
       const prev = prevRef.current;
+      const axes = gamepad.axes;
+      const axisLeftRight = Math.abs(axes[0]) > 0.5;
+      const axisUpDown = Math.abs(axes[1]) > 0.5;
+      const vibrateForAction = (action: string) => {
+        switch (action) {
+          case "up": case "down": case "left": case "right":
+            vibrate(gamepad, 38, 0.6, 0.6); break;
+          case "confirm":
+            vibrate(gamepad, 63, 1.0, 1.0); break;
+          case "back":
+            vibrate(gamepad, 50, 0.75, 0.75); break;
+          case "lb": case "rb":
+            vibrate(gamepad, 88, 1.0, 1.0); break;
+          case "delete":
+            vibrate(gamepad, 100, 1.0, 1.0); break;
+          case "toggle_hints":
+            vibrate(gamepad, 50, 0.75, 0.75); break;
+        }
+      };
+      const handleWithVibrate = (a: string) => { handleAction(a); vibrateForAction(a); };
       const actions: [string, number][] = [
         ["confirm", 0], ["back", 1], ["delete", 2], ["toggle_hints", 3],
         ["lb", 4], ["rb", 5],
@@ -217,8 +258,30 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
         const pressed = gamepad.buttons[idx]?.pressed ?? false;
         const k = `${action}-${gamepad.index}`;
         const p = prev.get(k) ?? 0;
-        if (pressed && p === 0) { handleAction(action); prev.set(k, 1); }
+        if (pressed && p === 0) { handleWithVibrate(action); prev.set(k, 1); }
         else if (!pressed) { prev.set(k, 0); }
+      }
+      if (axisLeftRight) {
+        const dir = axes[0] < -0.5 ? "left" : "right";
+        const k = `axis-${dir}-${gamepad.index}`;
+        const p = prev.get(k) ?? 0;
+        if (p === 0) { handleWithVibrate(dir); prev.set(k, 1); }
+      } else {
+        const kl = `axis-left-${gamepad.index}`;
+        const kr = `axis-right-${gamepad.index}`;
+        if (prev.get(kl) === 1) prev.set(kl, 0);
+        if (prev.get(kr) === 1) prev.set(kr, 0);
+      }
+      if (axisUpDown) {
+        const dir = axes[1] < -0.5 ? "up" : "down";
+        const k = `axis-${dir}-${gamepad.index}`;
+        const p = prev.get(k) ?? 0;
+        if (p === 0) { handleWithVibrate(dir); prev.set(k, 1); }
+      } else {
+        const ku = `axis-up-${gamepad.index}`;
+        const kd = `axis-down-${gamepad.index}`;
+        if (prev.get(ku) === 1) prev.set(ku, 0);
+        if (prev.get(kd) === 1) prev.set(kd, 0);
       }
     }, 80);
     return () => clearInterval(interval);
@@ -245,7 +308,7 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
           <p className="empty-hint">{tabIdx === 0 ? t("add_images") : t("add_videos")}</p>
         </div>
       ) : (
-        <div className="media-viewer-grid">
+        <div className="media-viewer-grid" ref={gridRef}>
           {files.map((file, i) => (
             <div
               key={file.path}
@@ -259,9 +322,6 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
                 <VideoThumbnail path={file.path} />
               )}
               <span className="media-viewer-name">{file.name}</span>
-              {selected === i && (
-                <button className="media-viewer-del" onClick={(e) => { e.stopPropagation(); setConfirmDelete(file.path); }}>🗑</button>
-              )}
             </div>
           ))}
         </div>
@@ -272,8 +332,8 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="confirm-title">{t("confirm_question")}</div>
             <div className="confirm-actions">
-              <button className="confirm-btn confirm-no" onClick={() => setConfirmDelete(null)}>{t("no")}</button>
-              <button className="confirm-btn confirm-yes" onClick={() => del(confirmDelete)}>{t("yes")}</button>
+              <button className={`confirm-btn confirm-no ${confirmFocus === 0 ? "focused" : ""}`} onClick={() => setConfirmDelete(null)}>{t("no")}</button>
+              <button className={`confirm-btn confirm-yes ${confirmFocus === 1 ? "focused" : ""}`} onClick={() => del(confirmDelete)}>{t("yes")}</button>
             </div>
           </div>
         </div>,
@@ -281,22 +341,13 @@ export function MediaViewer({ initialTab, onBack, onTabChange, controller, icons
       )}
 
       <footer className={`bottom-bar ${showHints ? "visible" : ""}`}>
-        <div className="bottom-bar-inner" style={{ justifyContent: "center", gap: 32 }}>
-          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.ConfirmIcon /></span>{t("open")}</div>
-          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.BackIcon /></span>{t("back")}</div>
-          <div className="bottom-hint">
-            {controller === "xbox"
-              ? <img src="/icons/XBOX_iconpack/button_xbox_digital_x_1.svg" className="hint-icon-img" draggable={false} />
-              : <span className="hint-icon-char">□</span>}
-            {t("delete")}
-          </div>
-          <div className="bottom-hint">
-            {controller === "xbox"
-              ? <img src="/icons/XBOX_iconpack/button_xbox_digital_y_1.svg" className="hint-icon-img" draggable={false} />
-              : <span className="hint-icon-char">△</span>}
-            {showHints ? t("hide") : t("show")}
-          </div>
-          <div className="bottom-hint"><span className="hint-icon-wrap"><icons.DpadNav /></span>{t("navigation")}</div>
+        <div className="bottom-bar-inner">
+          <div className="bottom-hint"><icons.ConfirmIcon />{t("open")}</div>
+          <div className="bottom-hint"><icons.BackIcon />{t("back")}</div>
+          <div className="bottom-hint"><icons.LbIcon /> <icons.RbIcon />{t("tabs")}</div>
+          <div className="bottom-hint"><icons.SearchIcon />{t("delete")}</div>
+          <div className="bottom-hint"><icons.ToggleIcon />{showHints ? t("hide") : t("show")}</div>
+          <div className="bottom-hint"><icons.DpadNav />{t("navigation")}</div>
         </div>
       </footer>
     </div>

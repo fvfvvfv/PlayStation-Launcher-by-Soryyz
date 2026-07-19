@@ -1,22 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useContext } from "react";
+import { LocaleContext } from "../hooks/useLocale";
 
 interface Props {
   onFinish: () => void;
 }
 
-const TIPS = [
-  "Я ещё не придумал как убрать фризы загрузки",
-  "Подпишись на мой ТикТок — @soryyz_project",
-  "Сделано с любовью в Беларуси",
-  "Лучше DualShock'a только DualSense",
-  "Запускай и играй — никаких лаунчеров",
-  "Спонсор этого текста — твоё терпение",
-  "SLauncher > PlayStation 5 UI",
-];
-
 export function VideoIntro({ onFinish }: Props) {
   const [fadeOut, setFadeOut] = useState(false);
-  const [tip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]);
+  const { t } = useContext(LocaleContext);
+  const [tipKey] = useState(() => `tip_${Math.floor(Math.random() * 6) + 1}`);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -41,7 +33,7 @@ export function VideoIntro({ onFinish }: Props) {
         className="video-intro-video"
         onEnded={() => { setFadeOut(true); setTimeout(onFinish, 500); }}
       />
-      <div className="intro-tip">{tip}</div>
+      <div className="intro-tip">{t(tipKey)}</div>
     </div>
   );
 }
