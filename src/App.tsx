@@ -346,18 +346,11 @@ function App() {
       }
       } catch (e) { console.error("gamepad handler error:", e); }
     },
-    [games.length, games, favorites.size, favorites, visibleGames, handleLaunch, toggleFav]
+    [games.length, favorites, handleLaunch, toggleFav]
   );
 
   const [controllerTheme, setControllerTheme] = useState("ps");
 
-  const actualControllerType = useGamepad(handleGamepad);
-  const effectiveControllerType = controllerTheme === "ps" ? "ps" as const : "xbox" as const;
-  const hasGamepad = actualControllerType !== "none";
-  const showFocus = hasGamepad;
-  const showHints = hasGamepad && inputMode === "gamepad" && hintsVisible;
-
-  const icons = ControllerIcons({ type: effectiveControllerType });
   const visibleGames = useMemo(() => {
     if (recentGames.length > 0) {
       const ordered = recentGames
@@ -367,6 +360,13 @@ function App() {
     }
     return games.slice(0, 3);
   }, [games, recentGames]);
+
+  const actualControllerType = useGamepad(handleGamepad);
+  const effectiveControllerType = controllerTheme === "ps" ? "ps" as const : "xbox" as const;
+  const hasGamepad = actualControllerType !== "none";
+  const showFocus = hasGamepad;
+  const showHints = hasGamepad && inputMode === "gamepad" && hintsVisible;
+  const icons = ControllerIcons({ type: effectiveControllerType });
 
   const localeCtx = useMemo(() => ({
     lang,
