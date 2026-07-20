@@ -28,3 +28,6 @@ public/bg/S2.mp4
 public/bg/S5.mp4
 public/bg/S6.mp4
 
+# Updater private key (keep secret!)
+.tauri/updater.key
+
