@@ -31,3 +31,6 @@ public/bg/S6.mp4
 # Updater private key (keep secret!)
 .tauri/updater.key
 
+# Agent instructions (local only)
+AGENTS.md
+
