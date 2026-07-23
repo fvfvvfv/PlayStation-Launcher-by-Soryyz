@@ -42,6 +42,7 @@ const ACCENT_PRESETS = [
 
 interface AppConfig {
   game_paths: string[];
+  recent_games: string[];
   auto_launch: boolean;
   minimize_to_tray: boolean;
   hints_visible: boolean;
@@ -51,10 +52,13 @@ interface AppConfig {
   ui_opacity: number;
   game_card_opacity: number;
   accent_color: string;
+  accent_auto: boolean;
   start_screen: string;
   show_game_covers: boolean;
   language: string;
   controller_theme: string;
+  view_mode: string;
+  discord_enabled: boolean;
 }
 
 interface Props {
@@ -64,6 +68,8 @@ interface Props {
   gameCardOpacity: number;
   onGameCardOpacityChange: (v: number) => void;
   accentColor: string;
+  accentAuto: boolean;
+  onAccentAutoChange: (v: boolean) => void;
   onAccentColorChange: (v: string) => void;
   lang: Lang;
   onLangChange: (v: Lang) => void;
@@ -75,6 +81,7 @@ interface Props {
 
 const defaultConfig: AppConfig = {
   game_paths: [],
+  recent_games: [],
   auto_launch: false,
   minimize_to_tray: true,
   hints_visible: true,
@@ -84,15 +91,17 @@ const defaultConfig: AppConfig = {
   ui_opacity: 0.85,
   game_card_opacity: 0.8,
   accent_color: "#2d7aff",
+  accent_auto: true,
   start_screen: "home",
   show_game_covers: true,
   language: "ru",
   controller_theme: "ps",
+  discord_enabled: true,
 };
 
 export function SettingsScreen({
   onRefreshGames, uiOpacity, onUiOpacityChange, gameCardOpacity, onGameCardOpacityChange,
-  onAccentColorChange, lang, onLangChange,
+  accentAuto, onAccentAutoChange, onAccentColorChange, lang, onLangChange,
   settingsDirtyRef, settingsSaveRef, controllerTheme, onControllerThemeChange,
 }: Props) {
   const { t } = useLocale();
@@ -103,6 +112,8 @@ export function SettingsScreen({
   const [resetConfirm, setResetConfirm] = useState(false);
   const [colorPos, setColorPos] = useState({ top: 0, left: 0 });
   const selectRef = useRef<HTMLDivElement>(null);
+  const langSelectRef = useRef<HTMLDivElement>(null);
+  const themeSelectRef = useRef<HTMLDivElement>(null);
   const colorRef = useRef<HTMLDivElement>(null);
   const colorGridRef = useRef<HTMLDivElement>(null);
   const [, forceUpdate] = useState(0);
@@ -154,10 +165,13 @@ export function SettingsScreen({
           ui_opacity: cfg.ui_opacity ?? 0.85,
           game_card_opacity: cfg.game_card_opacity ?? 0.8,
           accent_color: cfg.accent_color || "#2d7aff",
+          accent_auto: cfg.accent_auto ?? true,
           start_screen: cfg.start_screen || "home",
           show_game_covers: cfg.show_game_covers ?? true,
-          language: (cfg.language === "en" ? "en" : "ru") as Lang,
+          language: (cfg.language && ["ru", "en", "uk", "be", "kk", "uz"].includes(cfg.language) ? cfg.language : "ru") as Lang,
           controller_theme: cfg.controller_theme || "ps",
+          view_mode: cfg.view_mode || "grid",
+  discord_enabled: cfg.discord_enabled ?? true,
         });
       }).catch((err) => {
         console.error("Failed to load config", err);
@@ -197,6 +211,7 @@ export function SettingsScreen({
       onLangChange("ru");
       onUiOpacityChange(0.85);
       onGameCardOpacityChange(0.8);
+      onAccentAutoChange(true);
       onAccentColorChange("#2d7aff");
       onControllerThemeChange("ps");
       setResetConfirm(false);
@@ -204,13 +219,17 @@ export function SettingsScreen({
       setTimeout(() => setSaved(false), 2000);
       await onRefreshGames();
     } catch {}
-  }, [lang, onRefreshGames, onLangChange, onUiOpacityChange, onGameCardOpacityChange, onAccentColorChange]);
+  }, [lang, onRefreshGames, onLangChange, onUiOpacityChange, onGameCardOpacityChange, onAccentAutoChange, onAccentColorChange]);
 
   useEffect(() => {
     if (selectOpen) {
       const handler = (e: MouseEvent) => {
         const t = e.target as Node;
-        if (selectRef.current && !selectRef.current.contains(t)) setSelectOpen(null);
+        const inside = 
+          selectRef.current?.contains(t) ||
+          langSelectRef.current?.contains(t) ||
+          themeSelectRef.current?.contains(t);
+        if (!inside) setSelectOpen(null);
       };
       document.addEventListener("mousedown", handler);
       return () => document.removeEventListener("mousedown", handler);
@@ -294,6 +313,16 @@ export function SettingsScreen({
               <div className="toggle-knob" />
             </button>
           </div>
+
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <span>{t("settings_discord")}</span>
+              <span className="settings-row-desc">{t("settings_discord_desc")}</span>
+            </div>
+            <button className={`toggle-switch ${config.discord_enabled ? "on" : ""}`} onClick={() => { const next = !config.discord_enabled; update({ discord_enabled: next }); if (!next) invoke("clear_discord_presence").catch(() => {}); }} tabIndex={-1}>
+              <div className="toggle-knob" />
+            </button>
+          </div>
         </section>
 
         <section className="settings-section">
@@ -339,18 +368,35 @@ export function SettingsScreen({
 
           <div className="settings-row">
             <span>{t("accent_color")}</span>
-            <div className="color-picker-wrap" ref={colorRef}>
-              <button className="color-picker-btn" style={{ background: config.accent_color }} onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setColorPos({ top: r.bottom + 4, left: r.left }); setColorPickerOpen((v) => !v); }}>
-                <span className="color-picker-label">{t("choose")}</span>
+            <div className="settings-toggle-group">
+              <button className={`toggle-btn ${accentAuto ? "active" : ""}`} onClick={() => { onAccentAutoChange(true); update({ accent_auto: true }); }}>
+                {t("accent_auto")}
               </button>
-              {colorPickerOpen && createPortal(
-                <div className="color-picker-grid" ref={colorGridRef} style={{ position: "fixed", top: colorPos.top, left: colorPos.left }}>
-                  {ACCENT_PRESETS.map((color) => (
-                    <button key={color} className={`color-preset ${config.accent_color === color ? "active" : ""}`} style={{ background: color }} onClick={() => { update({ accent_color: color }); onAccentColorChange(color); setColorPickerOpen(false); }} />
-                  ))}
-                  <button className="color-preset custom" onClick={() => { const input = document.createElement("input"); input.type = "color"; input.value = config.accent_color; input.oninput = () => { update({ accent_color: input.value }); onAccentColorChange(input.value); }; input.click(); setColorPickerOpen(false); }} title={t("custom_color")}><span>+</span></button>
-                </div>,
-                document.body
+              <button className={`toggle-btn ${!accentAuto ? "active" : ""}`} onClick={() => { onAccentAutoChange(false); update({ accent_auto: false }); }}>
+                {t("accent_custom")}
+              </button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <span className={accentAuto ? "disabled" : ""}>{t("custom_color")}</span>
+            <div className="color-picker-wrap">
+              {accentAuto ? (
+                <div className="color-picker-btn disabled" style={{ background: config.accent_color }} />
+              ) : (
+                <>
+                <button className="color-picker-btn" style={{ background: config.accent_color }} onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setColorPos({ top: r.bottom + 4, left: r.left }); setColorPickerOpen((v) => !v); }} ref={colorRef}>
+                  <span className="color-picker-label">{t("choose")}</span>
+                </button>
+                {colorPickerOpen && createPortal(
+                  <div className="color-picker-grid" ref={colorGridRef} style={{ position: "fixed", top: colorPos.top, left: colorPos.left }}>
+                    {ACCENT_PRESETS.map((color) => (
+                      <button key={color} className={`color-preset ${config.accent_color === color ? "active" : ""}`} style={{ background: color }} onClick={() => { update({ accent_color: color }); onAccentColorChange(color); setColorPickerOpen(false); }} />
+                    ))}
+                    <button className="color-preset custom" onClick={() => { const input = document.createElement("input"); input.type = "color"; input.value = config.accent_color; input.oninput = () => { update({ accent_color: input.value }); onAccentColorChange(input.value); }; input.click(); setColorPickerOpen(false); }} title={t("custom_color")}><span>+</span></button>
+                  </div>,
+                  document.body
+                )}
+                </>
               )}
             </div>
           </div>
@@ -374,7 +420,7 @@ export function SettingsScreen({
           <h3 className="settings-section-title">{t("language")}</h3>
           <div className="settings-row">
             <span>{t("language")}</span>
-            <div className="custom-select-wrap">
+            <div className="custom-select-wrap" ref={langSelectRef}>
               <button className="custom-select" onClick={() => setSelectOpen((v) => v === "lang" ? null : "lang")}>
                 <span>{langNames[lang]}</span>
                 <span className="custom-select-arrow">▾</span>
@@ -396,7 +442,7 @@ export function SettingsScreen({
           </div>
           <div className="settings-row">
             <span>{t("controller_theme")}</span>
-            <div className="custom-select-wrap">
+            <div className="custom-select-wrap" ref={themeSelectRef}>
               <button className="custom-select" onClick={() => setSelectOpen((v) => v === "theme" ? null : "theme")}>
                 <span>{t("controller_" + controllerTheme)}</span>
                 <span className="custom-select-arrow">▾</span>
@@ -418,7 +464,7 @@ export function SettingsScreen({
           <h3 className="settings-section-title">{t("system")}</h3>
           <div className="settings-row">
             <span>{t("app_version")}</span>
-            <span className="settings-value">1.0.0</span>
+            <span className="settings-value">1.1.0</span>
           </div>
           <div className="settings-row">
             <span>{t("update_check")}</span>

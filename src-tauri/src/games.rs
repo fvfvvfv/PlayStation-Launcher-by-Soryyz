@@ -1,3 +1,4 @@
+use base64::Engine as _;
 use serde::Serialize;
 use serde_json;
 use std::path::{Path, PathBuf};
@@ -20,27 +21,27 @@ pub fn scan_all_games() -> Vec<GameEntry> {
     let mut seen = std::collections::HashSet::new();
 
     for game in scan_steam_games() {
-        if seen.insert(game.path.clone()) {
+        if seen.insert(game.path.to_lowercase()) {
             games.push(game);
         }
     }
     for game in scan_epic_games() {
-        if seen.insert(game.path.clone()) {
+        if seen.insert(game.path.to_lowercase()) {
             games.push(game);
         }
     }
     for game in scan_gog_games() {
-        if seen.insert(game.path.clone()) {
+        if seen.insert(game.path.to_lowercase()) {
             games.push(game);
         }
     }
     for game in scan_battlenet_games() {
-        if seen.insert(game.path.clone()) {
+        if seen.insert(game.path.to_lowercase()) {
             games.push(game);
         }
     }
     for game in scan_installed_programs() {
-        if seen.insert(game.path.clone()) {
+        if seen.insert(game.path.to_lowercase()) {
             games.push(game);
         }
     }
@@ -92,31 +93,18 @@ fn scan_gog_games() -> Vec<GameEntry> {
 fn scan_battlenet_games() -> Vec<GameEntry> {
     let mut games = Vec::new();
     let program_data = std::env::var("PROGRAMDATA").unwrap_or_default();
-    let battlenet_dir = PathBuf::from(&program_data).join("Battle.net").join("Agent");
-    let agent_db = battlenet_dir.join("product.db");
-    if !agent_db.exists() {
-        return games;
-    }
 
-    if let Ok(content) = std::fs::read_to_string(&agent_db) {
-        for line in content.lines() {
-            if !line.contains("game") && !line.contains("install_path") && !line.contains("product_name") {
-                continue;
-            }
-        }
-    }
-
-    let battlenet_configs = [
+    let config_dirs = [
         PathBuf::from(&program_data).join("Battle.net").join("Agent").join("data"),
         PathBuf::from(&std::env::var("PROGRAMFILES(X86)").unwrap_or_default()).join("Battle.net"),
     ];
 
-    for cfg_dir in &battlenet_configs {
+    for cfg_dir in &config_dirs {
         if !cfg_dir.exists() { continue; }
         if let Ok(entries) = std::fs::read_dir(cfg_dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.extension().and_then(|s| s.to_str()) != Some("db") && p.extension().and_then(|s| s.to_str()) != Some("config") {
+                if p.extension().and_then(|s| s.to_str()) != Some("config") {
                     continue;
                 }
                 let Ok(content) = std::fs::read_to_string(&p) else { continue };
@@ -220,7 +208,7 @@ fn scan_steam_library(path: &Path, games: &mut Vec<GameEntry>) {
                 name,
                 path: exe,
                 cover: format!(
-                    "https://steamcdn-a.akamaihd.net/steam/apps/{}/library_600x900.jpg",
+                    "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{}/library_600x900.jpg",
                     appid
                 ),
                 source: "Steam".to_string(),
@@ -282,6 +270,10 @@ fn scan_installed_programs() -> Vec<GameEntry> {
         r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
     ];
 
+    let launcher_markers = [
+        "steamapps", "\\epic games\\", "gog galaxy", "battle.net",
+    ];
+
     for path in &reg_paths {
         let Ok(hklm) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(path, KEY_READ)
         else {
@@ -303,6 +295,17 @@ fn scan_installed_programs() -> Vec<GameEntry> {
 
             let install_path = PathBuf::from(&install);
             if let Some(exe) = find_executable(&install_path) {
+                let exe_stem = std::path::Path::new(&exe)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if exe_stem.contains("steam") || exe_stem.contains("epicgames") || exe_stem.contains("battle") {
+                    continue;
+                }
+                let exe_lower = exe.to_lowercase();
+                if launcher_markers.iter().any(|m| exe_lower.contains(m)) {
+                    continue;
+                }
                 games.push(GameEntry {
                     name,
                     path: exe,
@@ -316,23 +319,35 @@ fn scan_installed_programs() -> Vec<GameEntry> {
 }
 
 fn find_executable(dir: &std::path::Path) -> Option<String> {
+    fn scan_dir(dir: &std::path::Path, depth: usize, candidates: &mut Vec<PathBuf>) {
+        if !dir.is_dir() || depth > 4 {
+            return;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan_dir(&path, depth + 1, candidates);
+                } else if path.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("exe".into()) {
+                    let stem = match path.file_stem() {
+                        Some(s) => s.to_string_lossy().to_lowercase(),
+                        None => continue,
+                    };
+                    if stem.contains("launcher") || stem.contains("unins") || stem == "steam" {
+                        continue;
+                    }
+                    candidates.push(path);
+                }
+            }
+        }
+    }
+
     if !dir.exists() || !dir.is_dir() {
         return None;
     }
 
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("exe".into()) {
-                let stem = path.file_stem()?.to_string_lossy().to_lowercase();
-                if stem.contains("launcher") || stem.contains("unins") {
-                    continue;
-                }
-                candidates.push(path);
-            }
-        }
-    }
+    scan_dir(dir, 1, &mut candidates);
 
     if candidates.is_empty() {
         return None;
@@ -409,9 +424,9 @@ pub fn scan_games(state: tauri::State<crate::config::ConfigState>) -> Vec<GameEn
     let cfg = state.0.lock().unwrap();
     let user = scan_user_path(&cfg.game_paths);
     let mut seen: std::collections::HashSet<String> =
-        games.iter().map(|g| g.path.clone()).collect();
+        games.iter().map(|g| g.path.to_lowercase()).collect();
     for game in user {
-        if seen.insert(game.path.clone()) {
+        if seen.insert(game.path.to_lowercase()) {
             games.push(game);
         }
     }
@@ -421,8 +436,10 @@ pub fn scan_games(state: tauri::State<crate::config::ConfigState>) -> Vec<GameEn
 #[tauri::command]
 pub fn launch_game(
     path: String,
+    game_name: Option<String>,
     state: State<crate::config::ConfigState>,
     app_handle: tauri::AppHandle,
+    discord: tauri::State<crate::discord::DiscordState>,
 ) -> Result<(), String> {
     if path.is_empty() {
         return Err("Empty path".into());
@@ -430,6 +447,15 @@ pub fn launch_game(
     Command::new(&path)
         .spawn()
         .map_err(|e| format!("Failed to launch: {}", e))?;
+
+    {
+        let cfg = state.0.lock().unwrap();
+        if cfg.discord_enabled {
+            if let Some(name) = &game_name {
+                crate::discord::DiscordState::set_playing(&discord, name);
+            }
+        }
+    }
 
     let mut cfg = state.0.lock().unwrap();
     cfg.recent_games.retain(|p| p != &path);
@@ -452,22 +478,22 @@ pub fn show_window(app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub fn toggle_favorite(path: String, state: tauri::State<crate::config::ConfigState>) -> bool {
-    let mut cfg = state.0.lock().unwrap();
-    if let Some(pos) = cfg.favorite_paths.iter().position(|p| p == &path) {
-        cfg.favorite_paths.remove(pos);
-        cfg.save();
+pub fn toggle_favorite(path: String, state: tauri::State<crate::config::FavoritesState>) -> bool {
+    let mut favs = state.0.lock().unwrap();
+    if let Some(pos) = favs.iter().position(|p| p == &path) {
+        favs.remove(pos);
+        crate::config::FavoritesState::save(&favs);
         false
     } else {
-        cfg.favorite_paths.push(path);
-        cfg.save();
+        favs.push(path);
+        crate::config::FavoritesState::save(&favs);
         true
     }
 }
 
 #[tauri::command]
-pub fn get_favorites(state: tauri::State<crate::config::ConfigState>) -> Vec<String> {
-    state.0.lock().unwrap().favorite_paths.clone()
+pub fn get_favorites(state: tauri::State<crate::config::FavoritesState>) -> Vec<String> {
+    state.0.lock().unwrap().clone()
 }
 
 #[tauri::command]
@@ -477,5 +503,50 @@ pub fn open_folder(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to open folder: {}", e))?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_game_cover(
+    game_path: String,
+    cover_path: Option<String>,
+    state: tauri::State<crate::config::CoversState>,
+) {
+    let mut covers = state.0.lock().unwrap();
+    if let Some(p) = cover_path {
+        covers.insert(game_path, p);
+    } else {
+        covers.remove(&game_path);
+    }
+    crate::config::CoversState::save(&covers);
+}
+
+#[tauri::command]
+pub fn get_game_cover(
+    game_path: String,
+    state: tauri::State<crate::config::CoversState>,
+) -> Option<String> {
+    state.0.lock().unwrap().get(&game_path).cloned()
+}
+
+#[tauri::command]
+pub fn get_cover_image(
+    game_path: String,
+    state: tauri::State<crate::config::CoversState>,
+) -> Option<String> {
+    let path = state.0.lock().unwrap().get(&game_path)?.clone();
+    let data = std::fs::read(&path).ok()?;
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png");
+    let mime = match ext.to_lowercase().as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => "image/png",
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    Some(format!("data:{mime};base64,{b64}"))
 }
 

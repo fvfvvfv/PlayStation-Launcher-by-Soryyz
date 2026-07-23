@@ -1,16 +1,18 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useGamepad } from "./hooks/useGamepad";
 import { useGames } from "./hooks/useGames";
 import { VideoIntro } from "./components/VideoIntro";
 import { GamesLibrary } from "./components/GamesLibrary";
+import { GameDetails } from "./components/GameDetails";
 import { MediaScreen } from "./components/MediaScreen";
 import { MediaViewer } from "./components/MediaViewer";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { ControllerIcons } from "./components/ControllerIcons";
 import { LocaleContext } from "./hooks/useLocale";
 import { messages, pluralFn, type Lang } from "./locales";
-import type { Screen } from "./types";
+import type { GameEntry, Screen, TagsData } from "./types";
 import "./App.css";
 
 type InputMode = "gamepad" | "mouse";
@@ -22,6 +24,17 @@ const TOP_ITEMS: { id: Screen; labelKey: string }[] = [
   { id: "settings", labelKey: "settings" },
 ];
 
+const BG_ACCENT_MAP: Record<string, string> = {
+  "S1.mp4": "#2d7aff",
+  "S2.mp4": "#1a6b3c",
+  "S3.mp4": "#8B3A3A",
+  "S4.mp4": "#269EB6",
+  "S5.mp4": "#6C5C33",
+  "S6.mp4": "#A42784",
+  "S7.mp4": "#14b8a6",
+  "S8.mp4": "#6D7B9D",
+};
+
 const MEDIA_TABS: { id: "screenshots" | "videos"; labelKey: string }[] = [
   { id: "screenshots", labelKey: "screenshots" },
   { id: "videos", labelKey: "videos" },
@@ -32,13 +45,13 @@ interface Section {
   cols: number;
 }
 
-function getSections(gamesCount: number, favCount: number): Section[] {
+function getSections(favCount: number, recentCount: number): Section[] {
   const sections: Section[] = [{ id: "hero", cols: 2 }];
   if (favCount > 0) {
     sections.push({ id: "favorites", cols: Math.min(favCount, 6) });
   }
-  if (gamesCount > 0) {
-    sections.push({ id: "games", cols: Math.min(gamesCount, 6) });
+  if (recentCount > 0) {
+    sections.push({ id: "games", cols: Math.min(recentCount, 6) });
   }
   return sections;
 }
@@ -68,10 +81,40 @@ function App() {
   const [uiOpacity, setUiOpacity] = useState(0.85);
   const [gameCardOpacity, setGameCardOpacity] = useState(0.8);
   const [accentColor, setAccentColor] = useState("#2d7aff");
+  const [accentAuto, setAccentAuto] = useState(true);
   const [lang, setLang] = useState<Lang>("ru");
   const [startScreen, setStartScreen] = useState("home");
   const { games, loading, launch, refresh, favorites, toggleFav, loadFavorites } = useGames();
   const [recentGames, setRecentGames] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [detailsGame, setDetailsGame] = useState<GameEntry | null>(null);
+  const [detailsCover, setDetailsCover] = useState<string | null>(null);
+  const [detailsTagEditor, setDetailsTagEditor] = useState(false);
+  const detailsTagEditorRef = useRef(false);
+  detailsTagEditorRef.current = detailsTagEditor;
+  const [tagsData, setTagsData] = useState<TagsData>({ definitions: [], assignments: {} });
+  const detailsGameRef = useRef<GameEntry | null>(null);
+  detailsGameRef.current = detailsGame;
+  const detailsGamepadRef = useRef<((action: string) => boolean) | null>(null);
+  const [customCovers, setCustomCovers] = useState<Record<string, string>>({});
+
+  const loadCustomCovers = useCallback(async () => {
+    const map: Record<string, string> = {};
+    for (const g of games) {
+      if (g.source === "Steam") continue;
+      try {
+        const cover = await invoke<string | null>("get_cover_image", { gamePath: g.path });
+        if (cover) map[g.path] = cover;
+      } catch {}
+    }
+    setCustomCovers(map);
+  }, [games]);
+
+  useEffect(() => { loadCustomCovers(); }, [loadCustomCovers]);
+
+  useEffect(() => {
+    invoke<TagsData>("get_tags_data").then(setTagsData).catch(() => {});
+  }, []);
 
   const reloadRecent = useCallback(async () => {
     try {
@@ -80,18 +123,18 @@ function App() {
     } catch {}
   }, []);
 
-  const handleLaunch = useCallback(async (path: string) => {
-    await launch(path);
+  const handleLaunch = useCallback(async (path: string, gameName?: string) => {
+    await invoke("launch_game", { path, gameName: gameName || null });
     await reloadRecent();
     await loadFavorites();
-  }, [launch, reloadRecent, loadFavorites]);
+  }, [reloadRecent, loadFavorites]);
 
   const loadConfig = useCallback(async () => {
     try {
       const cfg = await invoke<{
         hints_visible: boolean; bg_video: string; bg_video_enabled: boolean; bg_dimmed: number;
-        ui_opacity: number; game_card_opacity: number; accent_color: string; start_screen: string; language: string;
-        recent_games: string[]; controller_theme: string;
+        ui_opacity: number; game_card_opacity: number; accent_color: string; accent_auto: boolean; start_screen: string; language: string;
+        recent_games: string[]; controller_theme: string; view_mode: string; show_game_covers: boolean;
       }>("get_config");
       if (cfg.hints_visible !== undefined) setHintsVisible(cfg.hints_visible);
       if (cfg.bg_video) setBgVideo(cfg.bg_video);
@@ -100,10 +143,13 @@ function App() {
       if (cfg.ui_opacity !== undefined) setUiOpacity(cfg.ui_opacity);
       if (cfg.game_card_opacity !== undefined) setGameCardOpacity(cfg.game_card_opacity);
       if (cfg.accent_color) setAccentColor(cfg.accent_color);
+      if (cfg.accent_auto !== undefined) setAccentAuto(cfg.accent_auto);
       if (cfg.start_screen) setStartScreen(cfg.start_screen);
       if (cfg.language && ["ru", "en", "uk", "be", "kk", "uz"].includes(cfg.language)) setLang(cfg.language as Lang);
       if (cfg.recent_games) setRecentGames(cfg.recent_games);
       if (cfg.controller_theme) setControllerTheme(cfg.controller_theme);
+      if (cfg.view_mode === "grid" || cfg.view_mode === "list") setViewMode(cfg.view_mode);
+      if (cfg.show_game_covers !== undefined) setShowGameCovers(cfg.show_game_covers);
     } catch {}
     loadFavorites();
   }, [loadFavorites]);
@@ -116,11 +162,16 @@ function App() {
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
   useEffect(() => { if (screen === "home" && startScreen !== "home") setScreen(startScreen as Screen); }, []);
+  useEffect(() => {
+    invoke("set_discord_presence", { details: "В лаунчере" }).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--accent", accentColor);
-    document.documentElement.style.setProperty("--accent-glow", hexToRgba(accentColor, 0.3));
-  }, [accentColor]);
+    const color = accentAuto ? (BG_ACCENT_MAP[bgVideo] || "#2d7aff") : accentColor;
+    document.documentElement.style.setProperty("--accent", color);
+    document.documentElement.style.setProperty("--accent-glow", hexToRgba(color, 0.3));
+    document.documentElement.style.setProperty("--accent-bg-glow", hexToRgba(color, 0.1));
+  }, [accentColor, accentAuto, bgVideo]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--panel-alpha", String(uiOpacity));
@@ -129,6 +180,24 @@ function App() {
   useEffect(() => {
     document.documentElement.style.setProperty("--card-alpha", String(gameCardOpacity));
   }, [gameCardOpacity]);
+
+  useEffect(() => {
+    if (screen !== "home") return;
+    const secs = getSections(favorites.size, visibleGamesRef.current.length);
+    const sec = secs[focusSec];
+    if (!sec) return;
+    if (sec.id === "hero") {
+      document.querySelector(".home-sections")?.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      const el = document.querySelector(`.home-section-${sec.id}`);
+      if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [focusSec, screen, favorites.size, getSections]);
+
+  useEffect(() => {
+    const interval = setInterval(() => refresh(), 3600000);
+    return () => clearInterval(interval);
+  }, [refresh]);
 
   const screenRef = useRef(screen);
   screenRef.current = screen;
@@ -143,12 +212,23 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const libColsRef = useRef(4);
   const libGamepadHandlerRef = useRef<((action: string) => boolean) | null>(null);
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
+  const visibleGamesRef = useRef<GameEntry[]>([]);
+  const recentGamesRef = useRef<string[]>([]);
+  recentGamesRef.current = recentGames;
 
   useEffect(() => {
     invoke("get_config").then((cfg: any) => {
       invoke("set_config", { config: { ...cfg, hints_visible: hintsVisible } });
     }).catch(() => {});
   }, [hintsVisible]);
+
+  useEffect(() => {
+    invoke("get_config").then((cfg: any) => {
+      invoke("set_config", { config: { ...cfg, view_mode: viewMode } });
+    }).catch(() => {});
+  }, [viewMode]);
 
   useEffect(() => {
     const onMouse = () => setInputMode("mouse");
@@ -163,6 +243,16 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused && !detailsGameRef.current) {
+        invoke("set_discord_presence", { details: "В лаунчере" }).catch(() => {});
+      }
+    }).then((f) => { unlisten = f; });
+    return () => { unlisten?.(); };
+  }, []);
+
   const openMediaViewer = useCallback((tab: "screenshots" | "videos") => {
     setBarState("hiding");
     setTimeout(() => {
@@ -171,21 +261,20 @@ function App() {
     }, 200);
   }, []);
 
+  const pendingScreenRef = useRef<Screen | null>(null);
+
   const closeMediaViewer = useCallback(() => {
-    setBarState("hiding");
+    setBarState("showing");
     setTimeout(() => {
       setMediaTab(null);
       setBarState("normal");
     }, 200);
   }, []);
 
-  const [pendingScreen, setPendingScreen] = useState<Screen | null>(null);
-  const settingsDirtyRef = useRef(false);
-  const settingsSaveRef = useRef<() => Promise<void>>(() => Promise.resolve());
-
   const changeScreen = useCallback((s: Screen) => {
     if (screen === "settings" && s !== "settings" && settingsDirtyRef.current) {
-      setPendingScreen(s);
+      pendingScreenRef.current = s;
+      setConfirmPending(true);
       return;
     }
     setScreen(s);
@@ -193,15 +282,29 @@ function App() {
 
   const handleConfirmSave = useCallback(async () => {
     await settingsSaveRef.current();
-    setPendingScreen(null);
-    if (pendingScreen) setScreen(pendingScreen);
-  }, [pendingScreen]);
+    setConfirmPending(false);
+    const target = pendingScreenRef.current;
+    pendingScreenRef.current = null;
+    if (target) setScreen(target);
+  }, []);
 
   const handleConfirmDiscard = useCallback(async () => {
     await loadConfig();
-    setPendingScreen(null);
-    if (pendingScreen) setScreen(pendingScreen);
-  }, [pendingScreen, loadConfig]);
+    setConfirmPending(false);
+    pendingScreenRef.current = null;
+  }, [loadConfig]);
+
+  const showDetails = useCallback(async (game: GameEntry) => {
+    setDetailsGame(game);
+    setDetailsCover(customCovers[game.path] || game.cover || null);
+  }, [customCovers]);
+
+  const closeDetails = useCallback(() => {
+    setDetailsGame(null);
+    setDetailsCover(null);
+    setDetailsTagEditor(false);
+    invoke("set_discord_presence", { details: "В лаунчере" }).catch(() => {});
+  }, []);
 
   const handleGamepad = useCallback(
     (action: string) => {
@@ -209,17 +312,47 @@ function App() {
       setInputMode("gamepad");
       if (!action) return;
       const cs = screenRef.current;
-      const secs = getSections(games.length, favorites.size);
+      const g = gamesRef.current;
+      const vg = visibleGamesRef.current;
+      const rg = recentGamesRef.current;
+      const secs = getSections(favorites.size, vg.length);
+      const de = detailsGameRef.current;
+      const dte = detailsTagEditorRef.current;
+
+      // GameDetails overlay gamepad handling
+      if (de) {
+        if (dte && detailsGamepadRef.current?.(action)) return;
+        if (dte && action === "back") { setDetailsTagEditor(false); return; }
+        if (dte && action === "toggle_view") { setDetailsTagEditor(false); return; }
+        if (!dte && action === "confirm") { handleLaunch(de.path, de.name); return; }
+        if (!dte && action === "back") { closeDetails(); return; }
+        if (!dte && action === "toggle_view") { setDetailsTagEditor(true); return; }
+        if (action === "toggle_hints") { setHintsVisible((v) => !v); return; }
+        return;
+      }
 
       if (mediaTabRef.current) {
         return;
       }
 
+      // Screen navigation with LB/RB (skip when MediaViewer tab is active)
+      if (!mediaTabRef.current && (action === "lb" || action === "rb")) {
+        const items = TOP_ITEMS;
+        const curIdx = items.findIndex((t) => t.id === cs);
+        const nextIdx = action === "rb"
+          ? (curIdx + 1) % items.length
+          : (curIdx - 1 + items.length) % items.length;
+        changeScreen(items[nextIdx].id);
+        return;
+      }
+
       if (cs === "home") {
+        if (focusSecRef.current >= secs.length) return;
         switch (action) {
           case "up":
             setFocusSec((s) => {
               const next = Math.max(s - 1, 0);
+              if (!secs[next]) return s;
               const max = secs[next].cols - 1;
               setFocusItem((i) => Math.min(i, max >= 0 ? max : 0));
               return next;
@@ -228,6 +361,7 @@ function App() {
           case "down":
             setFocusSec((s) => {
               const next = Math.min(s + 1, secs.length - 1);
+              if (!secs[next]) return s;
               const max = secs[next].cols - 1;
               setFocusItem((i) => Math.min(i, max >= 0 ? max : 0));
               return next;
@@ -238,21 +372,30 @@ function App() {
             return;
           case "right":
             setFocusItem((i) => {
-              const max = secs[focusSecRef.current].cols - 1;
+              const maxSec = secs[focusSecRef.current];
+              if (!maxSec) return i;
+              const max = maxSec.cols - 1;
               return Math.min(i + 1, max);
             });
             return;
           case "confirm": {
-            const sec = secs[focusSecRef.current];
+            const secIdx = focusSecRef.current;
+            if (secIdx >= secs.length) return;
+            const sec = secs[secIdx];
             if (!sec) return;
             if (sec.id === "hero") {
-              if (focusItem === 0 && games.length > 0) handleLaunch(games[0].path);
+              if (focusItem === 0) {
+                const favList = g.filter((ge: GameEntry) => favorites.has(ge.path));
+                if (favList.length > 0) { handleLaunch(favList[0].path, favList[0].name); }
+                else if (rg.length > 0) { const recent = g.find((ge: GameEntry) => ge.path === rg[0]); if (recent) handleLaunch(recent.path, recent.name); }
+                else if (g.length > 0) handleLaunch(g[0].path, g[0].name);
+              }
               if (focusItem === 1) changeScreen("games");
             } else if (sec.id === "favorites") {
-              const favGames = games.filter(g => favorites.has(g.path));
-              if (focusItem >= 0 && focusItem < favGames.length) handleLaunch(favGames[focusItem].path);
-            } else if (sec.id === "games" && focusItem >= 0 && focusItem < visibleGames.length) {
-              handleLaunch(visibleGames[focusItem].path);
+              const favGames = g.filter((ge: GameEntry) => favorites.has(ge.path));
+              if (focusItem >= 0 && focusItem < favGames.length) handleLaunch(favGames[focusItem].path, favGames[focusItem].name);
+            } else if (sec.id === "games" && focusItem >= 0 && focusItem < vg.length) {
+              handleLaunch(vg[focusItem].path, vg[focusItem].name);
             }
             return;
           }
@@ -261,95 +404,67 @@ function App() {
 
       if (cs === "games") {
         if (libGamepadHandlerRef.current?.(action)) return;
+        const doMove = (fn: (i: number) => number) => {
+          const next = fn(libFocusRef.current);
+          libFocusRef.current = next;
+          setLibFocus(next);
+        };
         switch (action) {
           case "left":
-            setLibFocus((i) => Math.max(i - 1, 0));
+            doMove((i) => Math.max(i - 1, 0));
             return;
           case "right":
-            setLibFocus((i) => Math.min(i + 1, games.length - 1));
+            doMove((i) => i + 1);
             return;
           case "up":
-            setLibFocus((i) => {
+            doMove((i) => {
               const c = libColsRef.current;
               return Math.max(i - c, 0);
             });
             return;
           case "down":
-            setLibFocus((i) => {
+            doMove((i) => {
               const c = libColsRef.current;
-              return Math.min(i + c, games.length - 1);
+              return i + c;
             });
             return;
           case "confirm":
-            if (games[libFocusRef.current]) handleLaunch(games[libFocusRef.current].path);
+          case "toggle_view":
+          case "toggle_fav":
+          case "pick_cover":
+          case "cycle_sort":
+          case "open_kb":
+          case "toggle_tag_filter":
             return;
-          case "search":
-            searchInputRef.current?.focus();
-            return;
-          case "toggle_fav": {
-            const idx = libFocusRef.current;
-            if (games[idx]) toggleFav(games[idx].path);
-            return;
-          }
-          case "open_kb": {
-            searchInputRef.current?.focus();
-            return;
-          }
         }
+        return;
       }
 
-      if (cs === "media") {
-        const recent = recentGames.length > 0
-          ? recentGames.map(p => games.find(g => g.path === p)).filter((g): g is NonNullable<typeof g> => !!g)
-          : [];
-        const recentLimit = Math.min(recent.length, 4);
-        const totalItems = recentLimit + 2;
+      if (cs === "media" && !mediaTabRef.current) {
+        const doMove = (fn: (i: number) => number) => {
+          const next = fn(mediaFocusRef.current);
+          mediaFocusRef.current = next;
+          setMediaFocus(next);
+        };
         switch (action) {
-          case "up":
-            setMediaFocus((i) => Math.max(i - 1, 0));
-            return;
-          case "down":
-            setMediaFocus((i) => Math.min(i + 1, totalItems - 1));
-            return;
-          case "left":
-            setMediaFocus((i) => Math.max(i - 1, 0));
-            return;
-          case "right":
-            setMediaFocus((i) => Math.min(i + 1, totalItems - 1));
-            return;
-          case "confirm": {
-            const fi = mediaFocusRef.current;
-            if (fi < recentLimit) { changeScreen("games"); return; }
-            if (fi === recentLimit) { openMediaViewer("screenshots"); return; }
-            if (fi === recentLimit + 1) { openMediaViewer("videos"); return; }
-            return;
-          }
+          case "left": doMove((i) => Math.max(i - 1, 0)); return;
+          case "right": doMove((i) => i + 1); return;
+          case "up": doMove((i) => Math.max(i - 2, 0)); return;
+          case "down": doMove((i) => i + 2); return;
+          case "confirm": return;
         }
-      }
-
-      switch (action) {
-        case "lb": {
-          const si = screenRef.current;
-          const idx = TOP_ITEMS.findIndex((t) => t.id === si);
-          changeScreen(TOP_ITEMS[Math.max(idx - 1, 0)].id);
-          return;
-        }
-        case "rb": {
-          const si = screenRef.current;
-          const idx = TOP_ITEMS.findIndex((t) => t.id === si);
-          changeScreen(TOP_ITEMS[Math.min(idx + 1, TOP_ITEMS.length - 1)].id);
-          return;
-        }
-        case "toggle_hints":
-          setHintsVisible((v) => !v);
-          return;
+        return;
       }
       } catch (e) { console.error("gamepad handler error:", e); }
     },
-    [games.length, favorites, handleLaunch, toggleFav]
+    [favorites, handleLaunch]
   );
 
   const [controllerTheme, setControllerTheme] = useState("ps");
+  const [showGameCovers, setShowGameCovers] = useState(true);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const settingsDirtyRef = useRef(false);
+  const settingsSaveRef = useRef<() => Promise<void>>(async () => {});
 
   const visibleGames = useMemo(() => {
     if (recentGames.length > 0) {
@@ -360,6 +475,7 @@ function App() {
     }
     return games.slice(0, 3);
   }, [games, recentGames]);
+  visibleGamesRef.current = visibleGames;
 
   const actualControllerType = useGamepad(handleGamepad);
   const effectiveControllerType = controllerTheme === "ps" ? "ps" as const : "xbox" as const;
@@ -373,6 +489,16 @@ function App() {
     t: (key: string) => messages[lang]?.[key] ?? key,
     plural: pluralFn(lang),
   }), [lang]);
+
+  // Close details on Escape or back
+  useEffect(() => {
+    if (!detailsGame) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetails();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [detailsGame, closeDetails]);
 
   return (
     <LocaleContext.Provider value={localeCtx}>
@@ -445,9 +571,10 @@ function App() {
           )}
         </header>
 
-        <main className="main-content">
+        <main className={`main-content${screen === "home" ? " no-scroll" : ""}`}>
           {screen === "home" && (
             <>
+              <div className="home-hero">
               <section className="hero-section">
                 <div className="hero-content">
                   <h1 className="hero-title">
@@ -458,7 +585,15 @@ function App() {
                   <div className="hero-actions">
                     <button
                       className={`hero-btn primary ${showFocus && focusSec === 0 && focusItem === 0 ? "focused" : ""}`}
-                      onClick={() => games.length > 0 && handleLaunch(games[0].path)}
+                      onClick={() => {
+                        const fav = games.filter(g => favorites.has(g.path));
+                        if (fav.length > 0) return handleLaunch(fav[0].path, fav[0].name);
+                        if (recentGames.length > 0) {
+                          const recent = games.find(g => g.path === recentGames[0]);
+                          if (recent) return handleLaunch(recent.path, recent.name);
+                        }
+                        if (games.length > 0) handleLaunch(games[0].path, games[0].name);
+                      }}
                     >
                       {localeCtx.t("play")}
                     </button>
@@ -471,32 +606,42 @@ function App() {
                   </div>
                 </div>
               </section>
+              </div>
+              <div className="home-sections">
 
               {games.filter(g => favorites.has(g.path)).length > 0 && (
-                <section className="games-strip-section">
+                <section className="games-strip-section home-section-favorites">
                   <div className="section-header">
                     <h2 className="section-title">{localeCtx.t("favorites")}</h2>
                   </div>
                   <div className="games-strip">
-                    {games.filter(g => favorites.has(g.path)).map((game, i) => (
+                    {(() => {
+                      const __secs = getSections(favorites.size, visibleGames.length);
+                      const __favSec = __secs.findIndex(s => s.id === "favorites");
+                      return games.filter(g => favorites.has(g.path)).map((game, i) => (
                       <button
                         key={`fav-${i}`}
-                        className="game-tile"
-                        onClick={() => handleLaunch(game.path)}
+                        className={`game-tile${showFocus && focusSec === __favSec && focusItem === i ? " focused" : ""}`}
+                        onClick={() => handleLaunch(game.path, game.name)}
                       >
                         <div className="game-tile-bg">
-                          <span className="game-tile-icon">{game.name.charAt(0).toUpperCase()}</span>
+                          {showGameCovers && (customCovers[game.path] || game.cover) ? (
+                            <img src={customCovers[game.path] || game.cover} alt={game.name} className="game-tile-cover" />
+                          ) : (
+                            <span className="game-tile-icon">{game.name.charAt(0).toUpperCase()}</span>
+                          )}
                         </div>
                         <div className="game-tile-info">
                           <span className="game-tile-name">{game.name}</span>
                           <span className="game-tile-source">{game.source}</span>
                         </div>
                       </button>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 </section>
               )}
-              <section className="games-strip-section">
+              <section className="games-strip-section home-section-games">
                 <div className="section-header">
                   <h2 className="section-title">{localeCtx.t("last_games")}</h2>
                 </div>
@@ -506,24 +651,33 @@ function App() {
                   <div className="loading-text">{localeCtx.t("no_games")}</div>
                 ) : (
                   <div className="games-strip">
-                    {visibleGames.map((game, i) => (
+                    {(() => {
+                      const __secs = getSections(favorites.size, visibleGames.length);
+                      const __recentSec = __secs.findIndex(s => s.id === "games");
+                      return visibleGames.map((game, i) => (
                       <button
                         key={`${game.source}-${i}`}
-                        className={`game-tile ${showFocus && focusSec === 1 && focusItem === i ? "focused" : ""}`}
-                        onClick={() => handleLaunch(game.path)}
+                        className={`game-tile${showFocus && focusSec === __recentSec && focusItem === i ? " focused" : ""}`}
+                        onClick={() => handleLaunch(game.path, game.name)}
                       >
                         <div className="game-tile-bg">
-                          <span className="game-tile-icon">{game.name.charAt(0).toUpperCase()}</span>
+                          {showGameCovers && (customCovers[game.path] || game.cover) ? (
+                            <img src={customCovers[game.path] || game.cover} alt={game.name} className="game-tile-cover" />
+                          ) : (
+                            <span className="game-tile-icon">{game.name.charAt(0).toUpperCase()}</span>
+                          )}
                         </div>
                         <div className="game-tile-info">
                           <span className="game-tile-name">{game.name}</span>
                           <span className="game-tile-source">{game.source}</span>
                         </div>
                       </button>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 )}
               </section>
+              </div>
             </>
           )}
 
@@ -532,6 +686,7 @@ function App() {
               games={games}
               loading={loading}
               onLaunch={handleLaunch}
+              onShowDetails={showDetails}
               focusIndex={libFocus}
               onFocusChange={setLibFocus}
               showFocus={showFocus}
@@ -540,6 +695,15 @@ function App() {
               favorites={favorites}
               onToggleFav={toggleFav}
               gamepadHandlerRef={libGamepadHandlerRef}
+              icons={icons}
+              gpadActive={inputMode === "gamepad" && hasGamepad}
+              showHints={showHints}
+              viewMode={viewMode}
+              showGameCovers={showGameCovers}
+              recentGames={recentGames}
+              onViewModeChange={setViewMode}
+              tagsData={tagsData}
+              onTagsChange={setTagsData}
             />
           )}
 
@@ -574,6 +738,8 @@ function App() {
               gameCardOpacity={gameCardOpacity}
               onGameCardOpacityChange={setGameCardOpacity}
               accentColor={accentColor}
+              accentAuto={accentAuto}
+              onAccentAutoChange={setAccentAuto}
               onAccentColorChange={setAccentColor}
               lang={lang}
               onLangChange={setLang}
@@ -585,7 +751,7 @@ function App() {
           )}
         </main>
 
-        {!mediaTab && (
+        {!mediaTab && !detailsGame && (
         <footer className={`bottom-bar ${showHints ? "visible" : ""}`}>
           <div className="bottom-bar-inner">
             <div className="bottom-hint">
@@ -595,10 +761,10 @@ function App() {
               <icons.BackIcon /> {localeCtx.t("back")}
             </div>
             <div className="bottom-hint">
-              <icons.LbIcon /> <icons.RbIcon /> {localeCtx.t("tabs")}
+              <icons.ToggleIcon /> {hintsVisible ? localeCtx.t("hide") : localeCtx.t("show")}
             </div>
             <div className="bottom-hint">
-              <icons.ToggleIcon /> {hintsVisible ? localeCtx.t("hide") : localeCtx.t("show")}
+              <icons.SearchIcon /> {localeCtx.t("favorites")}
             </div>
             <div className="bottom-hint">
               <icons.DpadNav /> {localeCtx.t("navigation")}
@@ -608,7 +774,24 @@ function App() {
         )}
       </div>
 
-      {pendingScreen && (
+      {detailsGame && (
+        <GameDetails
+          game={detailsGame}
+          onLaunch={handleLaunch}
+          onClose={closeDetails}
+          showFocus={showFocus}
+          icons={icons}
+          showHints={showHints}
+          coverData={detailsCover}
+          tagsData={tagsData}
+          onTagsChange={setTagsData}
+          tagEditorOpen={detailsTagEditor}
+          onToggleEditor={() => setDetailsTagEditor((v) => !v)}
+          gamepadHandlerRef={detailsGamepadRef}
+        />
+      )}
+
+      {confirmPending && (
         <div className="confirm-overlay">
           <div className="confirm-dialog">
             <p className="confirm-text">{localeCtx.t("confirm_save")}</p>
@@ -619,6 +802,7 @@ function App() {
           </div>
         </div>
       )}
+
     </LocaleContext.Provider>
   );
 }

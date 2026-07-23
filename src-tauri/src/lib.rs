@@ -1,8 +1,11 @@
 mod config;
+mod discord;
 mod games;
 mod media;
+mod tags;
 
-use config::ConfigState;
+use config::{ConfigState, CoversState, FavoritesState, TagsState};
+use discord::DiscordState;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -18,7 +21,7 @@ fn create_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     TrayIconBuilder::new()
         .icon(icon)
-        .tooltip("PS5 Launcher")
+        .tooltip("SLauncher")
         .menu(&menu)
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
@@ -42,9 +45,17 @@ fn create_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let cfg = config::AppConfig::load();
+    let favs = FavoritesState::load();
+    let covers = CoversState::load();
+    let tags = TagsState::load();
+    let discord = DiscordState::new();
 
     tauri::Builder::default()
         .manage(ConfigState(std::sync::Mutex::new(cfg)))
+        .manage(favs)
+        .manage(covers)
+        .manage(tags)
+        .manage(discord)
         .setup(|app| {
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -78,9 +89,16 @@ pub fn run() {
             games::open_folder,
             games::toggle_favorite,
             games::get_favorites,
+            games::set_game_cover,
+            games::get_game_cover,
+            games::get_cover_image,
             media::get_media_counts,
             media::get_media_files,
             media::delete_media_file,
+            tags::get_tags_data,
+            tags::set_tags_data,
+            discord::set_discord_presence,
+            discord::clear_discord_presence,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -11,11 +11,18 @@ export type GamepadAction =
   | "toggle_hints"
   | "toggle_fav"
   | "open_kb"
-  | "cycle_sort";
+  | "cycle_sort"
+  | "toggle_view"
+  | "pick_cover"
+  | "toggle_tag_filter";
 
 type GamepadCallback = (action: GamepadAction) => void;
 
 const DEADZONE = 0.5;
+const REPEAT_DELAY = 300;
+const REPEAT_RATE = 120;
+
+const ANALOG_ACTIONS = new Set<GamepadAction>(["up", "down", "left", "right"]);
 
 function detectController(id: string): ControllerType {
   const lower = id.toLowerCase();
@@ -57,6 +64,9 @@ function vibrateForAction(gamepad: Gamepad, action: GamepadAction) {
     case "cycle_sort":
       vibrate(gamepad, 50, 0.6, 0.6);
       break;
+    case "toggle_view":
+      vibrate(gamepad, 50, 0.6, 0.6);
+      break;
   }
 }
 
@@ -66,18 +76,24 @@ export function useGamepad(callback: GamepadCallback) {
   callbackRef.current = callback;
 
   const lastFiredRef = useRef<GamepadAction | null>(null);
+  const lastFireTimeRef = useRef(0);
+  const repeatStartedRef = useRef(false);
 
   const getAction = useCallback((gamepad: Gamepad): GamepadAction | null => {
     const b = gamepad.buttons;
 
-    if (b[0]?.pressed) return "confirm";   // A / Cross
-    if (b[1]?.pressed) return "back";      // B / Circle
-    if (b[2]?.pressed) return "search";    // X / Square
-    if (b[3]?.pressed) return "toggle_hints"; // Y / Triangle
+    if (b[0]?.pressed) return "confirm";
+    if (b[1]?.pressed) return "back";
+    if (b[2]?.pressed) return "toggle_fav";
+    if (b[3]?.pressed) return "toggle_hints";
     if (b[4]?.pressed) return "lb";
     if (b[5]?.pressed) return "rb";
-    if (b[8]?.pressed) return "select";
-    if (b[9]?.pressed) return "start";
+    if (b[6]?.pressed) return "open_kb";
+    if (b[7]?.pressed) return "cycle_sort";
+    if (b[8]?.pressed) return "toggle_tag_filter";
+    if (b[9]?.pressed) return "cycle_sort";
+    if (b[10]?.pressed) return "toggle_view";
+    if (b[11]?.pressed) return "pick_cover";
     if (b[12]?.pressed) return "up";
     if (b[13]?.pressed) return "down";
     if (b[14]?.pressed) return "left";
@@ -114,10 +130,35 @@ export function useGamepad(callback: GamepadCallback) {
       const action = getAction(gp);
 
       if (action) {
-        if (action !== lastFiredRef.current) {
-          vibrateForAction(gp, action);
-          callbackRef.current(action);
-          lastFiredRef.current = action;
+        if (ANALOG_ACTIONS.has(action)) {
+          if (action !== lastFiredRef.current) {
+            vibrateForAction(gp, action);
+            callbackRef.current(action);
+            lastFiredRef.current = action;
+            lastFireTimeRef.current = performance.now();
+            repeatStartedRef.current = false;
+          } else {
+            const now = performance.now();
+            const elapsed = now - lastFireTimeRef.current;
+            if (!repeatStartedRef.current) {
+              if (elapsed >= REPEAT_DELAY) {
+                repeatStartedRef.current = true;
+                lastFireTimeRef.current = now;
+                vibrateForAction(gp, action);
+                callbackRef.current(action);
+              }
+            } else if (elapsed >= REPEAT_RATE) {
+              lastFireTimeRef.current = now;
+              vibrateForAction(gp, action);
+              callbackRef.current(action);
+            }
+          }
+        } else {
+          if (action !== lastFiredRef.current) {
+            vibrateForAction(gp, action);
+            callbackRef.current(action);
+            lastFiredRef.current = action;
+          }
         }
       } else {
         lastFiredRef.current = null;

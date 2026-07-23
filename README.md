@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/Screen2.png" alt="SLauncher" width="800">
+  <img src="screenshots/Logo.png" alt="SLauncher" width="800">
 </p>
 
 <p align="center">
@@ -30,21 +30,34 @@
 | 🎮 **Геймпад** | DualSense, DualShock, Xbox и generic — A/B/X/Y, крестовина, стики, LB/RB, Select/Start + тактильная отдача (вибрация) |
 | 🖥️ **Интерфейс** | Полноэкранный borderless, тёмная тема, плавные анимации, blur-панели, нижняя панель подсказок |
 | 🔍 **Автоопределение игр** | Сканирует Steam, Epic Games, реестр Windows и пользовательские папки |
+| 🏷️ **Теги** | Редактор тегов для игр, фильтрация по тегам в библиотеке, навигация с геймпада |
 | 🎬 **Медиа-просмотрщик** | Скриншоты и видео в сетке, превью, полноэкранный плеер, удаление, навигация с геймпада |
+| 🖼️ **Обложки** | Кастомные обложки для игр (не Steam) |
 | 🌍 **Мультиязычность** | Русский, English, українська, беларуская, қазақша, oʻzbekcha |
 | 🎨 **Кастомизация** | Цвет акцента, прозрачность панелей и карточек, фоновое видео, затемнение |
 | 📺 **Интро** | Видео при запуске со случайными советами внизу экрана |
 | 🗂️ **Трей** | Сворачивание в трей при запуске игры, контекстное меню |
+| 💬 **Discord RPC** | Отображает статус в Discord (в лаунчере / просматривает / играет) |
 
 ## Скриншоты
 
 <p align="center">
-  <img src="screenshots/Screen1.png" alt="Загрузка" width="45%">
-  <img src="screenshots/Screen2.png" alt="Главный экран" width="45%">
+  <img src="screenshots/Loading.png" alt="Загрузка" width="45%">
+  <img src="screenshots/Main.png" alt="Главный экран" width="45%">
 </p>
 <p align="center">
-  <img src="screenshots/Screen3.png" alt="Библиотека" width="45%">
-  <img src="screenshots/Screen4.png" alt="Настройки" width="45%">
+  <img src="screenshots/Library.png" alt="Библиотека" width="45%">
+  <img src="screenshots/AboutGame.png" alt="Детали игры" width="45%">
+</p>
+<p align="center">
+  <img src="screenshots/Theme1.png" alt="Тема 1" width="30%">
+  <img src="screenshots/Theme2.png" alt="Тема 2" width="30%">
+  <img src="screenshots/Theme3.png" alt="Тема 3" width="30%">
+</p>
+<p align="center">
+  <img src="screenshots/Theme4.png" alt="Тема 4" width="30%">
+  <img src="screenshots/Theme5.png" alt="Тема 5" width="30%">
+  <img src="screenshots/Theme6.png" alt="Тема 6" width="30%">
 </p>
 
 ## Технологии
@@ -63,12 +76,13 @@
 
 | Кнопка | Действие |
 |--------|----------|
-| **Cross / A** | Подтвердить |
+| **Cross / A** | Подтвердить / запустить игру |
 | **Circle / B** | Назад |
-| **Square / X** | Поиск (библиотека) |
+| **Square / X** | Поиск (библиотека) / добавить/удалить тег |
 | **Triangle / Y** | Скрыть/показать подсказки |
 | **LB / RB** | Переключение вкладок |
 | **Крестовина / Стики** | Навигация |
+| **Select / View** | Фильтр по тегам / открыть редактор тегов |
 
 ### Вибрация
 
@@ -117,10 +131,11 @@ src/
 │   └── useLocale.ts            # Контекст локализации
 ├── components/
 │   ├── VideoIntro.tsx          # Интро-видео со случайными фразами
-│   ├── GamesLibrary.tsx        # Библиотека игр с поиском и сеткой
+│   ├── GamesLibrary.tsx        # Библиотека игр с поиском, тегами, сеткой/списком
+│   ├── GameDetails.tsx         # Детальный просмотр игры, редактор тегов
 │   ├── MediaScreen.tsx         # Экран медиа с последними играми
 │   ├── MediaViewer.tsx         # Сетка скриншотов/видео и плеер
-│   ├── SettingsScreen.tsx      # Все настройки (config.json)
+│   ├── SettingsScreen.tsx      # Все настройки
 │   └── ControllerIcons.tsx     # SVG-иконки PS/Xbox
 ├── types.ts                    # Типы
 └── main.tsx                    # Точка входа
@@ -128,9 +143,11 @@ src/
 src-tauri/
 ├── src/
 │   ├── lib.rs                  # Точка входа, трей, команды
-│   ├── config.rs               # AppConfig, загрузка/сохранение
-│   ├── games.rs                # Сканирование Steam/Epic/реестр
-│   └── media.rs                # Сканирование медиа, превью, удаление
+│   ├── config.rs               # AppConfig, загрузка/сохранение, теги, избранное, обложки
+│   ├── games.rs                # Сканирование Steam/Epic/реестр, запуск
+│   ├── media.rs                # Сканирование медиа, превью, удаление
+│   ├── discord.rs              # Discord Rich Presence (прямой IPC)
+│   └── tags.rs                 # Команды get/set для тегов
 ├── Cargo.toml
 ├── tauri.conf.json
 └── capabilities/default.json
@@ -138,7 +155,16 @@ src-tauri/
 
 ## Настройки
 
-Файл `config.json` сохраняется рядом с исполняемым файлом.
+Файл `config.json` и данные сохраняются в `%APPDATA%\SLauncher\`.
+
+| Файл | Описание |
+|------|----------|
+| `config.json` | Все настройки лаунчера |
+| `favorites.json` | Список избранных игр |
+| `covers.json` | Кастомные обложки (base64) |
+| `tags.json` | Определения тегов и назначения игр |
+
+### Поля config.json
 
 | Поле | По умолчанию | Описание |
 |------|-------------|----------|
@@ -148,12 +174,16 @@ src-tauri/
 | `ui_opacity` | `0.85` | Прозрачность панелей |
 | `game_card_opacity` | `0.8` | Прозрачность карточек игр |
 | `accent_color` | `#2d7aff` | Цвет акцента |
+| `accent_auto` | `true` | Авто-цвет под фоновое видео |
 | `start_screen` | `home` | Стартовый экран |
 | `show_game_covers` | `true` | Показывать обложки Steam |
 | `hints_visible` | `true` | Подсказки геймпада |
 | `language` | `ru` | Язык интерфейса |
+| `controller_theme` | `ps` | Тема иконок (ps/xbox) |
+| `view_mode` | `grid` | Вид библиотеки (grid/list) |
 | `auto_launch` | `false` | Автозапуск |
 | `minimize_to_tray` | `true` | Сворачивать в трей при запуске игры |
+| `discord_enabled` | `true` | Discord Rich Presence |
 | `game_paths` | `[]` | Дополнительные папки с играми |
 | `recent_games` | `[]` | Недавно запущенные игры (авто) |
 

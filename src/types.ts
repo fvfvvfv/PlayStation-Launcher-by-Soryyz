@@ -13,3 +13,13 @@ export interface FocusState {
 }
 
 export type SortMode = "name" | "source" | "recent";
+
+export interface TagDefinition {
+  id: string;
+  names: Record<string, string>;
+}
+
+export interface TagsData {
+  definitions: TagDefinition[];
+  assignments: Record<string, string[]>;
+}
