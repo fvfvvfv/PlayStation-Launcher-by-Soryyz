@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "PS5 Launcher",
+  "productName": "SLauncher",
   "version": "0.1.0",
-  "identifier": "com.ps5launcher.app",
+  "identifier": "com.slauncher.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PS5 Launcher",
+        "title": "SLauncher",
         "width": 1920,
         "height": 1080,
         "resizable": false,
@@ -30,7 +30,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDMzg3QURCQzlERTQ2NTIKUldSU1J0N0oyM280ekp1REo2dGo4NytNNE8xSWV3TUZUQmFSSDZHTEdOcDVXNkVWMXNsckM2SCsK",
-      "endpoints": ["https://github.com/Soryyz-Project/Game-Launcher-by-Soryyz/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/Soryyz-Project/SLauncher-by-Soryyz/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }
